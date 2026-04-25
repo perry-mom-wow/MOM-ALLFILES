@@ -1,0 +1,67 @@
+# Ideal Customer Profile configuration
+brand:
+  name: mom-wow
+  product: functional cold-press juices
+  usp: "Premium cold-press juices with functional ingredients — no nasties, real results. Perfect for health-conscious venues."
+  country: Portugal
+  currency: EUR
+
+venue_types:
+  - beach_club
+  - restaurant
+  - cafe
+  - hotel
+  - gym
+  - wellness_center
+  - spa
+
+tiers:
+  tier_1:
+    label: "Tier 1"
+    monthly_revenue_eur: 1000
+    monthly_bottles: 250
+    description: "Large venue, high footfall. E.g. large hotel, beach club chain, multi-location restaurant group."
+    signals:
+      - "multiple locations"
+      - "large capacity"
+      - "hotel with restaurant"
+      - "beach club with full F&B"
+  tier_2:
+    label: "Tier 2"
+    monthly_revenue_eur: 750
+    monthly_bottles: 187
+    description: "Mid-size venue. E.g. boutique hotel, mid-size restaurant, gym with café."
+    signals:
+      - "boutique hotel"
+      - "single location restaurant"
+      - "gym with smoothie bar"
+  tier_3:
+    label: "Tier 3"
+    monthly_revenue_eur: 300
+    monthly_bottles: 75
+    description: "Small venue or trial account. E.g. small café, independent gym, pop-up."
+    signals:
+      - "small café"
+      - "independent studio"
+      - "pop-up"
+
+pipeline_stages:
+  - id: prospect
+    label: Prospect
+  - id: contacted
+    label: Contacted
+  - id: replied
+    label: Replied
+  - id: tasting_booked
+    label: Tasting Booked
+  - id: won
+    label: Won
+  - id: lost
+    label: Lost
+  - id: nurture
+    label: Nurture
+
+follow_up_schedule:
+  active_days: [3, 7, 14]
+  re_engagement_weeks: 5
+  re_engagement_max_months: 12

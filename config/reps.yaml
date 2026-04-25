@@ -1,0 +1,18 @@
+reps:
+  - id: marcus
+    name: Marcus
+    title: Sales Executive, mom-wow
+    linkedin_url: ""
+    email: marcus@mom-wow.com
+    active: true
+    tone_notes: "Direct, confident, sporty vibe. Gets to the point quickly. Loves sport and wellness."
+    sample_messages: []
+
+  - id: laura
+    name: Laura
+    title: Sales Executive, mom-wow
+    linkedin_url: ""
+    email: laura@mom-wow.com
+    active: true
+    tone_notes: "Warm, wellness-focused, hospitality background. Friendly and approachable. Passionate about food and drink culture."
+    sample_messages: []

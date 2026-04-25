@@ -1,0 +1,6 @@
+[theme]
+primaryColor        = "#6B7C52"   # Olive green — primary brand colour
+backgroundColor     = "#FFFFFF"   # White
+secondaryBackgroundColor = "#F0EDE6"  # Cream/off-white — cards and sidebar
+textColor           = "#1A1A1A"   # Near-black
+font                = "sans serif"
