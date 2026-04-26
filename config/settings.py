@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import yaml
 from pathlib import Path
@@ -30,7 +32,7 @@ def load_icp() -> dict:
     return _load_yaml("icp.yaml")
 
 
-def get_rep_by_id(rep_id: str) -> dict | None:
+def get_rep_by_id(rep_id: str):
     return next((r for r in load_reps() if r["id"] == rep_id), None)
 
 
@@ -39,7 +41,9 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 HUBSPOT_API_KEY = os.getenv("HUBSPOT_API_KEY", "")
 HUBSPOT_PIPELINE_ID = os.getenv("HUBSPOT_PIPELINE_ID", "default")
+HUNTER_API_KEY = os.getenv("HUNTER_API_KEY", "")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 REPORT_FROM_EMAIL = os.getenv("REPORT_FROM_EMAIL", "reports@mom-wow.com")
 REPORT_RECIPIENTS = [
     e.strip() for e in os.getenv("REPORT_RECIPIENTS", "perry@mom-wow.com").split(",")

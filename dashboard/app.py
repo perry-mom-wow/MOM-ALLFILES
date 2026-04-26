@@ -19,74 +19,167 @@ from config.settings import load_reps, save_reps, load_icp
 from config.brand import GREEN, GREEN_DARK, WHITE, BLACK, CREAM, PINK, TERRACOTTA, ORANGE, MUSTARD, BLUE_LIGHT
 from tools.outreach_queue import load_queue, clear_queue
 
+_LOGO = Path(__file__).parent.parent / "static" / "mom-logo.png"
+
+_BRAND_FONT_FACES = """
+@font-face {
+  font-family: 'ABC Favorit';
+  src: url('app/static/fonts/ABCFavorit-Regular.otf') format('opentype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'ABC Favorit Mono';
+  src: url('app/static/fonts/ABCFavoritMono-Light.otf') format('opentype');
+  font-weight: 300; font-style: normal; font-display: swap;
+}
+"""
 st.set_page_config(
-    page_title="mom-wow Sales Agent",
-    page_icon="🌿",
+    page_title="MOM · Sales Agent",
+    page_icon=str(_LOGO) if _LOGO.exists() else "🌿",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ── Brand CSS ──────────────────────────────────────────────────────────────────
-st.markdown(f"""
-<style>
-  /* Sidebar */
-  [data-testid="stSidebar"] {{
-    background-color: {GREEN_DARK};
+st.markdown(f"""<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&display=swap');
+  {_BRAND_FONT_FACES}
+
+  /* ── Typography ──────────────────────────────────────────────── */
+  html, body, [class*="css"], .stApp, .stMarkdown, p, span, div, label {{
+    font-family: 'ABC Favorit', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    letter-spacing: 0.005em;
   }}
-  [data-testid="stSidebar"] * {{
-    color: {WHITE} !important;
+  /* Restore Material Icons font so expander arrows etc. render as glyphs, not text */
+  .material-icons, .material-symbols-outlined, .material-symbols-rounded,
+  .material-symbols-sharp, [class*="material-icons"], [class*="material-symbols"],
+  [data-testid="stExpanderToggleIcon"], [data-testid="stIconMaterial"] {{
+    font-family: 'Material Symbols Outlined', 'Material Icons', 'Material Symbols Rounded' !important;
+    font-feature-settings: 'liga';
+    -webkit-font-feature-settings: 'liga';
   }}
-  [data-testid="stSidebar"] .stRadio label {{
-    color: {WHITE} !important;
+  code, pre, kbd, samp {{
+    font-family: 'ABC Favorit Mono', monospace !important;
   }}
-  [data-testid="stSidebar"] .stSelectbox label,
-  [data-testid="stSidebar"] .stSelectbox div {{
-    color: {WHITE} !important;
+  h1, h2, h3, h4, h5, h6,
+  [data-testid="stMetricValue"] {{
+    font-family: 'Fraunces', Georgia, serif !important;
+    font-weight: 400 !important;
+    letter-spacing: -0.015em;
+    font-variation-settings: "opsz" 96, "SOFT" 50;
+  }}
+  h1 {{ color: {GREEN_DARK}; font-size: 2.6rem !important; font-weight: 600 !important; }}
+  h2, h3 {{ color: {GREEN}; }}
+  [data-testid="stMetricValue"] {{
+    color: {GREEN_DARK};
+    font-size: 2rem !important;
+  }}
+  [data-testid="stMetricLabel"] {{
+    font-family: 'ABC Favorit', sans-serif !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem !important;
+    font-weight: 600;
+    color: {GREEN_DARK}99;
   }}
 
-  /* Primary buttons */
+  /* ── Sidebar ─────────────────────────────────────────────────── */
+  [data-testid="stSidebar"] {{
+    background: linear-gradient(180deg, {GREEN_DARK} 0%, #2D3D24 100%);
+    padding-top: 0.5rem;
+  }}
+  [data-testid="stSidebar"] * {{ color: {WHITE} !important; }}
+  [data-testid="stSidebar"] .stRadio label,
+  [data-testid="stSidebar"] .stSelectbox label,
+  [data-testid="stSidebar"] .stSelectbox div {{ color: {WHITE} !important; }}
+  [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {{
+    color: {CREAM} !important;
+    font-family: 'Fraunces', Georgia, serif !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.04em;
+  }}
+  [data-testid="stSidebar"] .stRadio > div {{
+    gap: 0.25rem;
+  }}
+  [data-testid="stSidebar"] .stRadio label {{
+    padding: 0.45rem 0.6rem;
+    border-radius: 6px;
+    transition: background 0.15s ease;
+    font-size: 0.95rem;
+  }}
+  [data-testid="stSidebar"] .stRadio label:hover {{
+    background-color: {GREEN}33;
+  }}
+  .sidebar-logo {{
+    text-align: center;
+    padding: 1.25rem 1rem 1rem 1rem;
+    background-color: {CREAM};
+    border-radius: 10px;
+    margin: 0 0 1rem 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }}
+  .sidebar-logo img {{
+    max-width: 80%;
+    height: auto;
+  }}
+  .sidebar-tagline {{
+    text-align: center;
+    color: {CREAM}cc !important;
+    font-family: 'Fraunces', serif !important;
+    font-style: italic;
+    font-size: 0.95rem;
+    margin-top: -0.25rem;
+    letter-spacing: 0.05em;
+  }}
+
+  /* ── Buttons ─────────────────────────────────────────────────── */
   .stButton > button[kind="primary"] {{
     background-color: {GREEN};
     color: {WHITE};
     border: none;
-    border-radius: 6px;
-    font-weight: 600;
+    border-radius: 999px;
+    font-weight: 500;
+    font-family: 'ABC Favorit', sans-serif !important;
+    letter-spacing: 0.03em;
+    padding: 0.5rem 1.2rem;
+    transition: all 0.15s ease;
   }}
   .stButton > button[kind="primary"]:hover {{
     background-color: {GREEN_DARK};
     color: {WHITE};
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px {GREEN_DARK}33;
   }}
-
-  /* Stop / danger button override — "replied" buttons */
   .stButton > button[kind="primary"][data-testid*="replied"] {{
     background-color: {TERRACOTTA};
   }}
 
-  /* Metric cards */
+  /* ── Metric cards ────────────────────────────────────────────── */
   [data-testid="stMetric"] {{
     background-color: {CREAM};
     border-left: 4px solid {GREEN};
-    padding: 12px 16px;
+    padding: 14px 18px;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }}
+
+  /* ── Expanders ───────────────────────────────────────────────── */
+  [data-testid="stExpander"] {{
+    border: 1px solid {GREEN}22;
+    border-left: 3px solid {GREEN};
+    background-color: {CREAM};
     border-radius: 6px;
   }}
 
-  /* Expanders */
-  [data-testid="stExpander"] {{
-    border-left: 3px solid {GREEN};
-    background-color: {CREAM};
-  }}
-
-  /* Page title accent */
-  h1 {{ color: {GREEN_DARK}; }}
-  h2, h3 {{ color: {GREEN}; }}
-
-  /* Warning banner override for "replied" alert */
+  /* ── Misc ───────────────────────────────────────────────────── */
   .element-container .stAlert[data-baseweb="notification"] {{
     border-left: 4px solid {TERRACOTTA};
   }}
-
-  /* Divider colour */
   hr {{ border-color: {GREEN}22; }}
+  .stCaption, [data-testid="stCaptionContainer"] {{
+    font-style: italic;
+    color: {GREEN_DARK}99 !important;
+  }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -96,9 +189,20 @@ STAGE_LABELS = {s["id"]: s["label"] for s in ICP["pipeline_stages"]}
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
+LOGO_PATH = _LOGO
+
+
 def sidebar():
-    st.sidebar.image("https://via.placeholder.com/200x60?text=mom-wow", use_column_width=True)
-    st.sidebar.title("🍋 Sales Agent")
+    st.sidebar.markdown('<div class="sidebar-logo">', unsafe_allow_html=True)
+    if LOGO_PATH.exists():
+        st.sidebar.image(str(LOGO_PATH), use_container_width=True)
+    else:
+        st.sidebar.markdown(f"<h1 style='text-align:center;color:{CREAM};'>MOM</h1>", unsafe_allow_html=True)
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
+    st.sidebar.markdown(
+        '<div class="sidebar-tagline">Sales Agent</div>',
+        unsafe_allow_html=True,
+    )
 
     page = st.sidebar.radio(
         "Navigate",
@@ -135,12 +239,15 @@ def page_pipeline():
         return
 
     import pandas as pd
+    from agents.reporter import _HS_TO_OURS
     rows = []
     for d in deals:
         props = d.get("properties", {})
+        hs_stage = (props.get("dealstage") or "").lower()
+        our_stage = _HS_TO_OURS.get(hs_stage, hs_stage)
         rows.append({
             "Deal": props.get("dealname", ""),
-            "Stage": STAGE_LABELS.get(props.get("dealstage", ""), props.get("dealstage", "")),
+            "Stage": STAGE_LABELS.get(our_stage, our_stage),
             "Value (€/mo)": float(props.get("amount") or 0),
             "Rep": props.get("hubspot_owner_id", ""),
             "Next Follow-up": (props.get("closedate") or "")[:10],
@@ -161,7 +268,7 @@ def page_pipeline():
         from agents.reporter import generate_report, _make_funnel_chart, _deals_to_df
         deal_df = _deals_to_df(deals)
         funnel_path = _make_funnel_chart(deal_df)
-        st.image(str(funnel_path), use_column_width=True)
+        st.image(str(funnel_path), use_container_width=True)
     except Exception as e:
         st.warning(f"Chart error: {e}")
 
@@ -370,7 +477,7 @@ def page_team():
     st.subheader("➕ Add New Rep")
     with st.form("add_rep"):
         new_name = st.text_input("Name")
-        new_title = st.text_input("Title", "Sales Executive, mom-wow")
+        new_title = st.text_input("Title", "Sales Executive, MOM")
         new_email = st.text_input("Email")
         new_linkedin = st.text_input("LinkedIn URL")
         new_tone = st.text_area("Voice & tone notes", height=80)
@@ -400,7 +507,7 @@ def page_team():
 def page_reports():
     st.title("📈 Reports")
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("📊 Generate Report Now", type="primary"):
             with st.spinner("Generating report..."):
@@ -414,11 +521,25 @@ def page_reports():
 
     with col2:
         if st.button("📧 Send Friday Email Now"):
-            with st.spinner("Sending email..."):
+            with st.spinner("Running cleanup + sending email..."):
                 try:
                     from agents.reporter import send_friday_report
                     send_friday_report()
-                    st.success("Email sent!")
+                    st.success("Cleanup ran and email sent!")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    with col3:
+        if st.button("🧹 Clean CRM Now"):
+            with st.spinner("Scanning HubSpot for junk + duplicates..."):
+                try:
+                    from agents.cleanup import cleanup
+                    result = cleanup(dry_run=False)
+                    st.success(f"Cleaned — deleted {result['deleted']} deals.")
+                    if result["junk"]:
+                        with st.expander("What was removed"):
+                            for j in result["junk"]:
+                                st.markdown(f"- **{j['name']}** — _{j['reason']}_")
                 except Exception as e:
                     st.error(f"Error: {e}")
 
@@ -439,7 +560,7 @@ def page_reports():
         cols = st.columns(2)
         for i, path in enumerate(report.get("chart_paths", [])):
             with cols[i % 2]:
-                st.image(str(path), use_column_width=True)
+                st.image(str(path), use_container_width=True)
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────

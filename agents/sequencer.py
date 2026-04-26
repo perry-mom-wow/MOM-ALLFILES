@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Optional
 
 from config.settings import load_icp
 from tools import hubspot_client as hs
@@ -42,7 +44,7 @@ def _get_deal_state(state: dict, deal_id: str) -> dict:
     })
 
 
-def run_daily(today: date | None = None) -> dict:
+def run_daily(today: Optional[date] = None) -> dict:
     """
     Check all deals for due follow-ups. Generate and queue messages.
     Returns a summary dict.
@@ -67,7 +69,7 @@ def run_daily(today: date | None = None) -> dict:
             continue
 
         deal_state = _get_deal_state(state, deal_id)
-        prospect_name = props.get("dealname", "Unknown").replace(" — mom-wow", "")
+        prospect_name = re.sub(r"\s*[—·]\s*(mom-wow|MOM).*$", "", props.get("dealname", "Unknown")).strip()
 
         if not deal_state["active_complete"]:
             # Still in active follow-up sequence (Day 3, 7, 14)

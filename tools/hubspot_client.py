@@ -1,8 +1,9 @@
 """HubSpot CRM client — contacts, companies, deals, activities."""
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Optional
 
 import hubspot
 from hubspot.crm.contacts import SimplePublicObjectInputForCreate as ContactInput
@@ -12,7 +13,7 @@ from hubspot.crm.associations.v4 import AssociationSpec
 
 from config.settings import HUBSPOT_API_KEY, HUBSPOT_PIPELINE_ID, load_icp
 
-_client: hubspot.Client | None = None
+_client: Optional[hubspot.Client] = None
 
 
 def _get_client() -> hubspot.Client:
@@ -25,10 +26,26 @@ def _get_client() -> hubspot.Client:
 ICP = load_icp()
 STAGE_MAP = {s["id"]: s["label"] for s in ICP["pipeline_stages"]}
 
+# Map our internal stage IDs → HubSpot default pipeline stage IDs.
+# HubSpot's free-tier default pipeline only allows these 7 stages.
+HS_STAGE_MAP = {
+    "prospect":       "appointmentscheduled",
+    "contacted":      "qualifiedtobuy",
+    "replied":        "presentationscheduled",
+    "tasting_booked": "decisionmakerboughtin",
+    "nurture":        "qualifiedtobuy",
+    "won":            "closedwon",
+    "lost":           "closedlost",
+}
+
+
+def _hs_stage(stage: str) -> str:
+    return HS_STAGE_MAP.get(stage, stage)
+
 
 # ── Companies ──────────────────────────────────────────────────────────────────
 
-def upsert_company(name: str, website: str | None, domain: str | None) -> str:
+def upsert_company(name: str, website: Optional[str], domain: Optional[str]) -> str:
     """Create or find a company by name. Returns HubSpot company ID."""
     client = _get_client()
     props = {"name": name}
@@ -56,13 +73,13 @@ def upsert_company(name: str, website: str | None, domain: str | None) -> str:
 # ── Contacts ───────────────────────────────────────────────────────────────────
 
 def upsert_contact(
-    email: str | None,
+    email: Optional[str],
     first_name: str,
     last_name: str,
     company_id: str,
-    linkedin_url: str | None = None,
-    instagram_handle: str | None = None,
-    phone: str | None = None,
+    linkedin_url: Optional[str] = None,
+    instagram_handle: Optional[str] = None,
+    phone: Optional[str] = None,
 ) -> str:
     """Create or find a contact. Returns HubSpot contact ID."""
     client = _get_client()
@@ -127,17 +144,15 @@ def create_deal(
     tier: int,
     venue_type: str,
     revenue_potential_eur: float,
-    next_followup_date: date | None = None,
+    next_followup_date: Optional[date] = None,
 ) -> str:
     """Create a deal in the pipeline. Returns deal ID."""
     client = _get_client()
     props: dict[str, Any] = {
-        "dealname": name,
+        "dealname": f"{name} [{rep_id}]",
         "pipeline": HUBSPOT_PIPELINE_ID,
-        "dealstage": stage,
-        "hubspot_owner_id": rep_id,
+        "dealstage": _hs_stage(stage),
         "amount": str(revenue_potential_eur),
-        "deal_currency_code": "EUR",
     }
     if next_followup_date:
         props["closedate"] = next_followup_date.isoformat()
@@ -151,15 +166,83 @@ def create_deal(
     return deal_id
 
 
+def delete_deal(deal_id: str) -> None:
+    """Archive (soft-delete) a deal in HubSpot."""
+    _get_client().crm.deals.basic_api.archive(deal_id=deal_id)
+
+
+def delete_company(company_id: str) -> None:
+    _get_client().crm.companies.basic_api.archive(company_id=company_id)
+
+
+def delete_contact(contact_id: str) -> None:
+    _get_client().crm.contacts.basic_api.archive(contact_id=contact_id)
+
+
+def find_existing_deal_by_venue(venue_name: str) -> Optional[dict]:
+    """
+    Search HubSpot for an existing deal that matches this venue name (any rep, any stage
+    except Lost). Returns the deal dict (with id + properties) or None.
+    """
+    if not venue_name:
+        return None
+    client = _get_client()
+    try:
+        results = client.crm.deals.search_api.do_search(
+            public_object_search_request={
+                "filterGroups": [{
+                    "filters": [
+                        {"propertyName": "dealname", "operator": "CONTAINS_TOKEN", "value": venue_name},
+                    ],
+                }],
+                "properties": ["dealname", "dealstage", "hubspot_owner_id", "amount"],
+                "limit": 10,
+            }
+        )
+    except Exception:
+        return None
+
+    if not results.results:
+        return None
+
+    needle = venue_name.lower().strip()
+    for r in results.results:
+        name = (r.properties.get("dealname") or "").lower()
+        # Strip our suffixes for fair comparison
+        name_clean = re.sub(r"\s*[—·]\s*(mom-wow|MOM).*$", "", name).strip()
+        if name_clean == needle or needle in name_clean:
+            stage = (r.properties.get("dealstage") or "").lower()
+            if stage != "closedlost":
+                return {"id": r.id, "properties": r.properties}
+    return None
+
+
+def get_deal_associations(deal_id: str) -> dict:
+    """Return {'companies': [ids], 'contacts': [ids]} for a deal."""
+    client = _get_client()
+    out = {"companies": [], "contacts": []}
+    for kind in ("companies", "contacts"):
+        try:
+            resp = client.crm.associations.v4.basic_api.get_page(
+                object_type="deal",
+                object_id=deal_id,
+                to_object_type=kind[:-1],  # 'company' / 'contact'
+            )
+            out[kind] = [r.to_object_id for r in resp.results]
+        except Exception:
+            pass
+    return out
+
+
 def update_deal_stage(deal_id: str, stage: str) -> None:
     client = _get_client()
     client.crm.deals.basic_api.update(
         deal_id=deal_id,
-        simple_public_object_input={"properties": {"dealstage": stage}},
+        simple_public_object_input={"properties": {"dealstage": _hs_stage(stage)}},
     )
 
 
-def update_deal_followup(deal_id: str, next_date: date, re_engagement_count: int | None = None) -> None:
+def update_deal_followup(deal_id: str, next_date: date, re_engagement_count: Optional[int] = None) -> None:
     client = _get_client()
     props = {"closedate": next_date.isoformat()}
     if re_engagement_count is not None:
@@ -173,28 +256,28 @@ def update_deal_followup(deal_id: str, next_date: date, re_engagement_count: int
 # ── Activities / Notes ─────────────────────────────────────────────────────────
 
 def log_note(contact_id: str, deal_id: str, body: str) -> None:
-    """Log a note/activity on a contact and deal."""
+    """Log a note on a contact and deal using the modern v3 Notes API."""
     client = _get_client()
-    engagement = {
-        "engagement": {
-            "active": True,
-            "type": "NOTE",
-            "timestamp": int(datetime.utcnow().timestamp() * 1000),
-        },
-        "metadata": {"body": body},
-        "associations": {
-            "contactIds": [int(contact_id)],
-            "dealIds": [int(deal_id)],
-        },
-    }
-    client.api_client.call_api(
-        "/engagements/v1/engagements",
-        "POST",
-        body=engagement,
-        response_type=object,
-        auth_settings=["hapikey"],
-        _return_http_data_only=True,
-    )
+    timestamp_ms = int(datetime.utcnow().timestamp() * 1000)
+
+    # Create the note (using generic objects API for "notes" object type)
+    try:
+        resp = client.crm.objects.basic_api.create(
+            object_type="notes",
+            simple_public_object_input_for_create={
+                "properties": {
+                    "hs_note_body": body,
+                    "hs_timestamp": str(timestamp_ms),
+                }
+            },
+        )
+        note_id = resp.id
+    except Exception:
+        return  # silently skip if note creation fails — non-critical
+
+    # Associate the note to the contact (association type 202) and deal (214)
+    _associate(client, "notes", note_id, "contact", contact_id, 202)
+    _associate(client, "notes", note_id, "deal", deal_id, 214)
 
 
 # ── Reporting queries ──────────────────────────────────────────────────────────

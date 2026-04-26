@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 
@@ -41,13 +42,13 @@ def extract_emails(text: str) -> list[str]:
     return list({e.lower() for e in found if not any(b in e.lower() for b in blacklist)})
 
 
-def extract_linkedin_url(text: str) -> str | None:
+def extract_linkedin_url(text: str) -> Optional[str]:
     """Find a LinkedIn company or personal URL in text."""
     match = re.search(r"https?://(?:www\.)?linkedin\.com/(?:company|in)/[\w\-]+", text)
     return match.group(0) if match else None
 
 
-def extract_instagram_handle(text: str) -> str | None:
+def extract_instagram_handle(text: str) -> Optional[str]:
     """Find an Instagram handle or URL in text."""
     match = re.search(r"(?:instagram\.com/|@)([\w.]+)", text)
     return match.group(1) if match else None

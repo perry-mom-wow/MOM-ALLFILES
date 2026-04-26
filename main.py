@@ -1,5 +1,5 @@
 """
-mom-wow Sales Agent — CLI entry point.
+MOM Sales Agent (Longevity Alchemists) — CLI entry point.
 
 Usage:
   python main.py discover --location "Lisboa" --types beach_club restaurant --rep marcus
@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import date
+from typing import Optional
 
 from config.settings import load_reps, load_icp
 
@@ -19,7 +20,7 @@ ICP = load_icp()
 VENUE_TYPES = ICP["venue_types"]
 
 
-def _pick_rep(rep_id: str | None) -> str:
+def _pick_rep(rep_id: Optional[str]) -> str:
     """Interactively pick a rep if not supplied."""
     reps = load_reps()
     if not reps:
@@ -80,10 +81,14 @@ def cmd_discover(args):
             sequence = generate_sequence(profile, rep_id)
 
             print(f"    ✓ Onboarding to HubSpot...")
-            from agents.crm import onboard_prospect
-            result = onboard_prospect(profile, sequence, rep_id)
-
-            print(f"    ✅ Done — Deal ID {result['deal_id']} | €{result['revenue_potential_eur']}/mo | Next follow-up: {result['next_followup']}\n")
+            from agents.crm import onboard_prospect, GatekeeperRejection, DuplicateInCRM
+            try:
+                result = onboard_prospect(profile, sequence, rep_id)
+                print(f"    ✅ Done — Deal ID {result['deal_id']} | €{result['revenue_potential_eur']}/mo | Next follow-up: {result['next_followup']}\n")
+            except DuplicateInCRM as dup:
+                print(f"    🔄 {dup}\n")
+            except GatekeeperRejection as gk:
+                print(f"    🚫 {gk}\n")
 
         except Exception as e:
             print(f"    ❌ Error: {e}\n")
@@ -143,6 +148,11 @@ def cmd_queue(args):
     print(format_queue_for_display(items))
 
 
+def cmd_cleanup(args):
+    from agents.cleanup import cleanup
+    cleanup(dry_run=not args.apply)
+
+
 def cmd_dashboard(_args):
     import subprocess
     import os
@@ -151,7 +161,7 @@ def cmd_dashboard(_args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="mom-wow AI Sales Agent")
+    parser = argparse.ArgumentParser(description="MOM AI Sales Agent — Longevity Alchemists")
     sub = parser.add_subparsers(dest="command")
 
     # discover
@@ -173,6 +183,10 @@ def main():
     p_queue = sub.add_parser("queue", help="View today's outreach queue for a rep")
     p_queue.add_argument("--rep", "-r", help="Rep ID")
 
+    # cleanup
+    p_cleanup = sub.add_parser("cleanup", help="Find and remove junk deals from HubSpot")
+    p_cleanup.add_argument("--apply", action="store_true", help="Actually delete (default is dry-run)")
+
     # dashboard
     sub.add_parser("dashboard", help="Open Streamlit dashboard")
 
@@ -186,6 +200,8 @@ def main():
         cmd_report(args)
     elif args.command == "queue":
         cmd_queue(args)
+    elif args.command == "cleanup":
+        cmd_cleanup(args)
     elif args.command == "dashboard":
         cmd_dashboard(args)
     else:

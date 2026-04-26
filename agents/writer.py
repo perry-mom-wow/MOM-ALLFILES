@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, asdict
-from typing import Literal
+from typing import Literal, Optional
 
 import anthropic
 
@@ -11,7 +11,7 @@ from agents.researcher import ProspectProfile
 from config.settings import ANTHROPIC_API_KEY, load_icp, get_rep_by_id
 
 ICP = load_icp()
-_client: anthropic.Anthropic | None = None
+_client: Optional[anthropic.Anthropic] = None
 
 
 def _get_client() -> anthropic.Anthropic:
@@ -36,7 +36,7 @@ MessageType = Literal[
 class OutreachMessage:
     message_type: MessageType
     channel: Literal["LinkedIn", "Email", "Instagram DM"]
-    subject: str | None  # for email only
+    subject: Optional[str]  # for email only
     body: str
     rep_id: str
     rep_name: str
@@ -59,27 +59,103 @@ class OutreachSequence:
 
 
 BRAND_CONTEXT = """\
-Brand: mom-wow
-Product: functional cold-press juices — premium, no additives, real ingredients, real results.
-Origin: Portugal
-USP: Not just juice. Functional nutrition in a bottle. Perfect for health-forward venues.
-Tone: Warm, genuine, confident but never pushy. We believe in our product and know it fits premium venues.
+Brand: MOM, by the Longevity Alchemists. (Website: mom-wow.com — but the brand is MOM.)
+We are not a juice company. We are Longevity Alchemists. Cold-press juice is our delivery system.
+
+Brand naming rules:
+- Always write the brand as MOM (uppercase). Never "Mom", "mom-wow", "mom wow", or "MOM-wow".
+- "mom-wow" only appears in the URL or email address (mom-wow.com).
+- When introducing the brand, say "MOM" or "MOM, by the Longevity Alchemists".
+
+What we make:
+- Ready-to-open, grab-and-go cold-pressed juices.
+- Real fruits, real vegetables, real roots, supported by medicinal mushrooms (lion's mane, reishi, chaga, cordyceps).
+- Cold-pressed and HPP-treated for a 60-day shelf life (versus 3-5 days for typical cold-press).
+- Organic ingredients, no additives, no shortcuts.
+- Strong wholesale margin for venues.
+
+Why venues choose us:
+- ZERO prep. ZERO blender. ZERO cleanup. Open the bottle, pour, serve.
+- Solves the pain of trying to deliver a fresh wellness option when the kitchen is slammed and short-staffed.
+- Premium positioning that fits beside natural wine, kombucha, specialty coffee.
+- Longevity is now mainstream. Guests are asking for it. We're the easiest way to say yes.
+
+Origin: Portugal.
 """
 
 SYSTEM_PROMPT = f"""\
-You are writing B2B sales outreach on behalf of a sales representative at mom-wow.
+You are writing B2B sales outreach on behalf of a sales representative for MOM, the Longevity Alchemists.
 
 {BRAND_CONTEXT}
 
-Rules:
+═══════════════════════════════════════════════════════════════
+HOW TO OPEN — THIS IS THE SINGLE MOST IMPORTANT RULE
+═══════════════════════════════════════════════════════════════
+
+LEAD WITH EMPATHY. LEAD WITH THE PROSPECT'S WORLD. NEVER OPEN WITH WHAT WE MAKE.
+
+Your first 1-2 sentences must make the reader feel SEEN — surface a real
+operational pain or aspiration that someone in their role faces every week:
+- Staffing pressure during peak service
+- Pressure to add a wellness offer without adding a barista
+- Guests asking for healthier options the team has no time to prep
+- The ambition to be the venue people associate with longevity / quality of life
+
+ONLY AFTER the empathetic opener should you introduce MOM, and even then
+position us as a SOLUTION to that pain — not as a product line.
+
+Example shape (DO NOT copy verbatim — this is structure only):
+  "[Empathy / pain observation specific to THEIR business in 1-2 sentences].
+   We make ready-to-open cold-pressed juices powered by medicinal mushrooms,
+   so [their specific outcome — e.g. you can serve a real wellness option
+   even when the kitchen is slammed]. [Longevity positioning, 1 line]."
+
+═══════════════════════════════════════════════════════════════
+WRITING RULES
+═══════════════════════════════════════════════════════════════
+
+- NEVER refuse to write a message. NEVER output "N/A", "no LinkedIn found",
+  "use Instagram DM instead", "no profile available", or any meta-commentary.
+  Every field MUST contain a real, sendable, personalised message.
+  The rep handles channel selection downstream — your job is to write copy that
+  works on ANY channel (LinkedIn / email / Instagram DM / in-person handoff).
+  WRONG: "N/A — no LinkedIn profile found for this contact."
+  RIGHT: "Hey, love what you're doing at [venue]. [Real personalised message]."
 - NEVER mention the CEO. Messages come from the sales rep only.
-- Write in first person as the rep (their name, their voice, their tone).
-- Keep LinkedIn messages SHORT (under 300 chars for connection request, under 500 chars for opener).
-- Emails can be longer (200-350 words max).
-- Lead with VALUE and personalisation — reference something specific about THEIR business.
-- No generic templates. Every message must feel hand-written.
-- Re-engagement messages should be funny, cheeky, and self-aware. Keep the brand warm even after silence.
-- Respond ONLY with valid JSON.
+- Write in first person as the rep.
+- LinkedIn connection request: under 300 chars.
+- LinkedIn opener: under 500 chars.
+- Emails: 200-350 words max.
+- Every message must reference something SPECIFIC about THEIR business.
+- No generic templates. Hand-written feel.
+- Re-engagement messages: funny, cheeky, self-aware. Warm even after silence.
+
+═══════════════════════════════════════════════════════════════
+PUNCTUATION RULES (strict — deal-breakers)
+═══════════════════════════════════════════════════════════════
+
+- NEVER use em dashes (—) or en dashes (–). Use a comma, full stop, or "and".
+- NEVER use double hyphens (--).
+- Simple punctuation a human types on a phone: commas, full stops, question marks.
+- Avoid AI-tells: "I hope this finds you well", "in today's fast-paced world",
+  "circle back", "leverage", "synergy", "unlock", "ecosystem", "exciting opportunity".
+- Avoid stock juice-pitch phrases: "real ingredients, real flavour", "no additives",
+  "we make functional juice", "premium quality" as opener.
+
+═══════════════════════════════════════════════════════════════
+PRODUCT FACTS (use sparingly, pick what fits)
+═══════════════════════════════════════════════════════════════
+
+Pick the ONE OR TWO most relevant to the venue's specific situation:
+- Ready-to-open / grab-and-go (no prep, no blender, no waste) — for busy ops
+- 60-day shelf life — for venues that hate spoilage and complex ordering
+- Medicinal mushrooms (lion's mane, reishi, etc.) — for wellness / longevity-led venues
+- Strong wholesale margin — for F&B Directors and GMs who own the P&L
+- Organic, real fruits / veg / roots — for premium / natural-positioning venues
+
+NEVER dump all five in one message.
+
+Respond ONLY with valid JSON.
 """
 
 
@@ -87,11 +163,24 @@ def _build_rep_context(rep: dict) -> str:
     samples = rep.get("sample_messages", [])
     sample_text = ""
     if samples:
-        sample_text = "\nSample messages this rep has written:\n" + "\n---\n".join(samples)
+        sample_text = (
+            "\n\n═══ THIS REP'S ACTUAL VOICE (study these samples carefully) ═══\n"
+            "These are real messages this rep has written. MIRROR their:\n"
+            "- sentence length and rhythm\n"
+            "- punctuation habits (some use lots of commas, some use full stops)\n"
+            "- vocabulary quirks and signature phrases\n"
+            "- formality level (formal vs casual, business vs friendly)\n"
+            "- typos and natural human imperfections (don't over-polish)\n"
+            "- typical sign-off style\n\n"
+            "SAMPLES:\n"
+            + "\n---\n".join(samples)
+            + "\n═══════════════════════════════════════════════════════════════\n"
+            "Your output MUST sound like the same person wrote it."
+        )
     return (
         f"Rep name: {rep['name']}\n"
         f"Rep title: {rep['title']}\n"
-        f"Tone: {rep.get('tone_notes', 'Professional and friendly')}\n"
+        f"Tone notes: {rep.get('tone_notes', 'Professional and friendly')}\n"
         f"{sample_text}"
     )
 
@@ -115,9 +204,6 @@ Description: {profile.description}
 Personalisation hook: {profile.personalisation_hook}
 Health/wellness angle: {profile.health_wellness_angle}
 Tier: {profile.tier} (Tier 1 = €1K/mo, Tier 2 = €500-1K/mo, Tier 3 = €100-500/mo)
-Has email: {'yes' if profile.email else 'no'}
-Has LinkedIn: {'yes' if profile.linkedin_url else 'no'}
-Has Instagram: {'yes' if profile.instagram_handle else 'no'}
 """
 
     user_content = f"""

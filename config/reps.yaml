@@ -1,18 +1,132 @@
 reps:
-  - id: marcus
-    name: Marcus
-    title: Sales Executive, mom-wow
-    linkedin_url: ""
-    email: marcus@mom-wow.com
-    active: true
-    tone_notes: "Direct, confident, sporty vibe. Gets to the point quickly. Loves sport and wellness."
-    sample_messages: []
-
-  - id: laura
-    name: Laura
-    title: Sales Executive, mom-wow
-    linkedin_url: ""
-    email: laura@mom-wow.com
-    active: true
-    tone_notes: "Warm, wellness-focused, hospitality background. Friendly and approachable. Passionate about food and drink culture."
-    sample_messages: []
+- active: true
+  email: marcus@mom-wow.com
+  id: marcus
+  linkedin_url: ''
+  name: Marcus
+  sample_messages:
+  - Hi Perry See attached.
+  - I have listed some objectives for the week and ill update this in the next few
+    dats for month targets.
+  - AT the bottom is a list of some information / access requests just as a reminder
+    for you.
+  - Have a good evening.
+  - Hi Nina.
+  - Thanks for the information pack.
+  - As Perry said we have the VW camper that he could bring into the space. This will
+    be more on brand for MoM.
+  - This would be the ideal way of participating in the event. So it would be great
+    to know if this was feasible first.
+  - Can you let me know what’s possible on price for attending in this way.
+  - Best
+  - Marcus
+  title: Sales Executive, MOM
+  tone_notes: Direct, confident, sporty vibe. Gets to the point quickly. Loves sport
+    and wellness.
+- active: true
+  email: laura@mom-wow.com
+  id: laura
+  linkedin_url: ''
+  name: Laura
+  sample_messages:
+  - Hi. Remember I told you Adriana from welwell wnt to do an interview with you?
+    She want to know if she can pass by tomorrow, she want to go to MOM for the interview
+    and take pics of the store. Can you do it tomorrow morning?
+  - Hi Perry. I didn’t have time to do the proposal for the Van cause I’m still walking
+    around. Wonder if someone else can follow up that  and I do events and sales.
+    Is that ok? Thank you. I know you need that ASAP. Thank you.
+  - Hi Sophie,
+  - Great speaking earlier — really exciting to hear more about the Interstellar Summit.
+    It sounds like a fantastic event, and we’d love to be involved.
+  - Following our conversation, I’ve outlined a proposal for Mom-Wow to partner with
+    you across both days.
+  - We’d propose bringing a fully branded functional juice bar experience to the summit,
+    operating throughout May 6–7. As the exclusive juice partner on-site, we’d serve
+    approximately 200–250 bottles across the event, giving attendees access to performance-focused,
+    functional beverages aligned with the summit’s theme of workplace optimisation.
+  - We see strong value in integrating into the key networking moments — the Day 1
+    mixer and Day 2 after party — where we can create a high-impact brand presence
+    while also driving sampling and engagement. I would be there to introduce the
+    products, explain the benefits, and connect with attendees directly.
+  - In terms of setup, we’re flexible depending on the venue logistics. We can either
+    create a clean indoor activation (branded table/booth), or, if outdoor access
+    allows, bring a VW T1 van for a more distinctive and memorable experience.
+  - From a commercial standpoint, a full sponsorship isn’t feasible for us at this
+    stage, so we’d be looking at a commercial partnership model. This would involve
+    supplying product at a partner rate, with Mom-Wow handling the activation, presence,
+    and overall experience. We’re also open to exploring a co-sponsorship with a complementary
+    partner if that helps expand the activation.
+  - At the moment, final pricing is still dependent on co-packer costs, which we expect
+    to confirm within the next 2–3 weeks. We’re also on track to have our first HPP
+    batch ready by the event, extending shelf life and simplifying logistics.
+  - Overall, we think this is a great fit — particularly given the international audience
+    and strong UK presence, where there’s already familiarity with functional mushroom
+    products.
+  - Let me know your thoughts, and happy to jump on a call to refine details or align
+    on next steps.
+  - Best,
+  - Laura Marin.
+  title: Sales Executive, MOM
+  tone_notes: Warm, wellness-focused, hospitality background. Friendly and approachable.
+    Passionate about food and drink culture.
+- active: true
+  email: perry@mom-wow.com
+  id: perry_patraszewski
+  linkedin_url: https://www.linkedin.com/in/perry-patraszewski/
+  name: Perry Patraszewski
+  sample_messages:
+  - Hi Cristiana, Ellie
+  - Now that the agreement is countersigned, here's how I see the runway. Splitting
+    it into tracks so nothing gets tangled. Let's keep everything in writing over
+    email from here , easier for both of us to track, and I'll aim for quick turnarounds
+    so logistics don't slip.
+  - 'Fast track — I''M YOU, May 8th, Lisbon First activation under the agreement.
+    We''ll run:'
+  - The Mushroom Ritual Bar from our truck — serving our existing longevity juices
+    plus a special ritual pour named for the night. Open to all guests, not VIP-only.
+  - A Backstage Sanctuary for Jade and her crew — tonics, adaptogens, calm before
+    and after the set.
+  - Full setup, staffing, and production on our side.
+  - 'To nail logistics, three things from you by May 1:'
+  - Guest count estimate
+  - I'll handle bar footprint, power, and water access directly with the venue.
+  - 'Slow track — Jade''s signature drink Jade''s own drink is a separate build ,
+    this product should be hers, done properly, not rushed. Jade and I are already
+    in touch about her visit on May 6th or 7th for a first tasting (looping you in
+    here so you''re across it). From there:'
+  - 6-7 May First try of proposed bases and notes so we establish what direction we
+    heading.
+  - 'Mid May: second tasting with refined samples.'
+  - 'Late May / early June: third review, recipe and visual direction locked, small
+    pilot batch in hand.'
+  - 'June: production and bottling.'
+  - 'Late June / early July: shelf-stable bottles ready for her touring.'
+  - Compensation, revenue split and structure for this product we can work through
+    in parallel as the drink takes shape , rather than front-loading all the terms
+    before we know what we're building.
+  - 'Content together — in May Pre-May 8th isn''t realistic since Jade arrives on
+    the 6th. In May we''d love to produce a short film with her: a field-and-studio
+    day ,  foraging recordings, music-making with mushrooms, her sound, her aesthetic.
+    We''d fund the production and handle editing; her creative input on direction
+    matters to us. We''d love MOM branding and Jade in frame , open to hearing what
+    she''s comfortable with, we''re not rigid on it. She posts on her own terms and
+    timing.'
+  - Can you check her May availability and come back with a few windows?
+  - Side note — ABCs of Mushrooms We run a small bi-weekly education series in Lisbon.
+    Open invitation for Jade to drop in as a participant if it appeals, no performance
+    ask, the space is intimate. Totally optional, just leaving the door open.
+  - Looking forward to your reply on the May 8th logistics and Jade's May availability
+    for the shoot.
+  - Perry
+  - Hello Sami ,
+  - I trust you are well I’m sorry for lack of communication. Would it be possible
+    to order some extracts please ?
+  - 'I’d need :'
+  - -LM x 5
+  - '- GL x 5-CM x 5'
+  - Please
+  - Mush thanks
+  - Perry
+  title: CEO, MOM
+  tone_notes: 'Fun , warm , approachable , caring , kind , little out of the box ,
+    definitely business oriented , Like to make complex subjects simple. '

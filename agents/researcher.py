@@ -2,17 +2,20 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, asdict
 
+from typing import Optional
 import anthropic
 
 from agents.discovery import ProspectRaw
 from config.settings import ANTHROPIC_API_KEY, load_icp
 from tools.scraper import scrape_url, extract_emails, extract_linkedin_url, extract_instagram_handle
-from tools.search import tavily_search
+from tools.search import tavily_search, find_linkedin_decision_maker
+from tools.hunter import best_decision_maker
 
 ICP = load_icp()
-_client: anthropic.Anthropic | None = None
+_client: Optional[anthropic.Anthropic] = None
 
 
 def _get_client() -> anthropic.Anthropic:
@@ -27,20 +30,20 @@ class ProspectProfile:
     # Basic
     name: str
     venue_type: str
-    address: str | None
-    website: str | None
-    phone: str | None
-    email: str | None
-    linkedin_url: str | None
-    instagram_handle: str | None
+    address: Optional[str]
+    website: Optional[str]
+    phone: Optional[str]
+    email: Optional[str]
+    linkedin_url: Optional[str]
+    instagram_handle: Optional[str]
     tier: int
     # Enriched
-    contact_name: str | None = None
-    contact_title: str | None = None
+    contact_name: Optional[str] = None
+    contact_title: Optional[str] = None
     description: str = ""
     personalisation_hook: str = ""
     health_wellness_angle: str = ""
-    confirmed_tier: int | None = None
+    confirmed_tier: Optional[int] = None
     tier_reasoning: str = ""
     # Raw text gathered
     raw_text: str = ""
@@ -50,7 +53,7 @@ class ProspectProfile:
 
 
 SYSTEM_PROMPT = """\
-You are a B2B sales researcher for mom-wow, a premium functional cold-press juice brand in Portugal.
+You are a B2B sales researcher for MOM (the Longevity Alchemists), a premium functional cold-press juice brand in Portugal.
 
 Your job is to analyse a venue and produce a structured prospect profile.
 Focus on:
@@ -81,6 +84,7 @@ def research_prospect(raw: ProspectRaw) -> ProspectProfile:
     if raw.notes:
         text_parts.append(raw.notes)
 
+    decision_maker: Optional[dict] = None
     if raw.website:
         page_text = scrape_url(raw.website)
         text_parts.append(page_text)
@@ -93,6 +97,26 @@ def research_prospect(raw: ProspectRaw) -> ProspectProfile:
             raw.linkedin_url = extract_linkedin_url(page_text)
         if not raw.instagram_handle:
             raw.instagram_handle = extract_instagram_handle(page_text)
+
+        # Hunter.io: find a real decision-maker email (overrides generic info@)
+        domain = re.sub(r"^https?://(?:www\.)?", "", raw.website).split("/")[0]
+        decision_maker = best_decision_maker(domain)
+        if decision_maker:
+            raw.email = decision_maker["email"]
+            print(f"      ✓ Hunter found: {decision_maker.get('first_name')} {decision_maker.get('last_name')} — {decision_maker.get('position')}")
+
+    # Fallback: if Hunter found nothing, search LinkedIn via Tavily
+    if not decision_maker:
+        li = find_linkedin_decision_maker(raw.name, raw.address or "")
+        if li:
+            decision_maker = {
+                "first_name": li["name"].split(" ")[0] if li.get("name") else "",
+                "last_name": " ".join(li["name"].split(" ")[1:]) if li.get("name") else "",
+                "position": li.get("title"),
+                "email": raw.email,  # keep generic email as fallback
+                "linkedin": li.get("linkedin_url"),
+            }
+            print(f"      ✓ LinkedIn found: {li['name']} — {li.get('title')} ({li.get('linkedin_url')})")
 
     # Tavily search for extra context
     search_results = tavily_search(f"{raw.name} {raw.address or ''} menu health wellness contact", max_results=3)
@@ -139,6 +163,15 @@ Gathered information:
     except Exception:
         pass
 
+    # Prefer Hunter's verified decision-maker over Claude's guess
+    contact_name = enriched.get("contact_name")
+    contact_title = enriched.get("contact_title")
+    contact_linkedin = raw.linkedin_url
+    if decision_maker:
+        contact_name = f"{decision_maker.get('first_name','')} {decision_maker.get('last_name','')}".strip() or contact_name
+        contact_title = decision_maker.get("position") or contact_title
+        contact_linkedin = decision_maker.get("linkedin") or contact_linkedin
+
     return ProspectProfile(
         name=raw.name,
         venue_type=raw.venue_type,
@@ -146,11 +179,11 @@ Gathered information:
         website=raw.website,
         phone=raw.phone,
         email=raw.email,
-        linkedin_url=raw.linkedin_url,
+        linkedin_url=contact_linkedin,
         instagram_handle=raw.instagram_handle,
         tier=enriched.get("confirmed_tier", raw.tier),
-        contact_name=enriched.get("contact_name"),
-        contact_title=enriched.get("contact_title"),
+        contact_name=contact_name,
+        contact_title=contact_title,
         description=enriched.get("description", ""),
         personalisation_hook=enriched.get("personalisation_hook", ""),
         health_wellness_angle=enriched.get("health_wellness_angle", ""),

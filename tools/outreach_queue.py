@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from datetime import date
 from pathlib import Path
+from typing import Optional
 
 QUEUE_DIR = Path(__file__).parent.parent / "queues"
 QUEUE_DIR.mkdir(exist_ok=True)
@@ -13,7 +14,7 @@ def _queue_path(rep_id: str, day: date) -> Path:
     return QUEUE_DIR / f"{rep_id}_{day.isoformat()}.json"
 
 
-def add_to_queue(rep_id: str, item: dict, day: date | None = None) -> None:
+def add_to_queue(rep_id: str, item: dict, day: Optional[date] = None) -> None:
     """Add a message item to a rep's daily queue."""
     day = day or date.today()
     path = _queue_path(rep_id, day)
@@ -23,7 +24,7 @@ def add_to_queue(rep_id: str, item: dict, day: date | None = None) -> None:
         json.dump(items, f, indent=2, default=str)
 
 
-def load_queue(rep_id: str, day: date | None = None) -> list[dict]:
+def load_queue(rep_id: str, day: Optional[date] = None) -> list[dict]:
     day = day or date.today()
     path = _queue_path(rep_id, day)
     if not path.exists():
@@ -32,7 +33,7 @@ def load_queue(rep_id: str, day: date | None = None) -> list[dict]:
         return json.load(f)
 
 
-def clear_queue(rep_id: str, day: date | None = None) -> None:
+def clear_queue(rep_id: str, day: Optional[date] = None) -> None:
     day = day or date.today()
     path = _queue_path(rep_id, day)
     if path.exists():

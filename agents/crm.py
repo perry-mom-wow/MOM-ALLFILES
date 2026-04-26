@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, timedelta
+from typing import Optional
 
 from agents.researcher import ProspectProfile
 from agents.writer import OutreachSequence
@@ -17,11 +18,19 @@ REENGAGE_WEEKS = ICP["follow_up_schedule"]["re_engagement_weeks"]  # 5
 REENGAGE_MAX_MONTHS = ICP["follow_up_schedule"]["re_engagement_max_months"]  # 12
 
 
-def _domain_from_url(url: str | None) -> str | None:
+def _domain_from_url(url: Optional[str]) -> Optional[str]:
     if not url:
         return None
     match = re.search(r"(?:https?://)?(?:www\.)?([^/]+)", url)
     return match.group(1) if match else None
+
+
+class GatekeeperRejection(Exception):
+    """Raised when the gatekeeper rejects a prospect before HubSpot write."""
+
+
+class DuplicateInCRM(Exception):
+    """Raised when a deal for this venue already exists in HubSpot."""
 
 
 def onboard_prospect(
@@ -30,6 +39,19 @@ def onboard_prospect(
     rep_id: str,
 ) -> dict:
     """Create company, contact, deal in HubSpot and queue initial messages."""
+    # ── Duplicate check — does a non-Lost deal already exist for this venue? ──
+    existing = hs.find_existing_deal_by_venue(profile.name)
+    if existing:
+        raise DuplicateInCRM(
+            f"'{profile.name}' is already in HubSpot (deal ID {existing['id']}). Skipping."
+        )
+
+    # ── Final gatekeeper check ──────────────────────────────────────────────
+    from agents.gatekeeper import validate_prospect
+    accepted, reason = validate_prospect(profile)
+    if not accepted:
+        raise GatekeeperRejection(f"Gatekeeper rejected '{profile.name}': {reason}")
+
     # Company
     company_id = hs.upsert_company(
         name=profile.name,
@@ -59,7 +81,7 @@ def onboard_prospect(
     next_followup = date.today() + timedelta(days=ACTIVE_FOLLOWUP_DAYS[0])
 
     deal_id = hs.create_deal(
-        name=f"{profile.name} — mom-wow",
+        name=f"{profile.name} · MOM",
         company_id=company_id,
         contact_id=contact_id,
         stage="prospect",

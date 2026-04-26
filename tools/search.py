@@ -32,10 +32,11 @@ def google_maps_search(
     if not GOOGLE_MAPS_API_KEY:
         return []
 
-    gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
-
-    # Geocode the location first
-    geo = gmaps.geocode(location)
+    try:
+        gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
+        geo = gmaps.geocode(location)
+    except Exception:
+        return []
     if not geo:
         return []
     lat_lng = geo[0]["geometry"]["location"]
@@ -99,6 +100,67 @@ def search_instagram_hashtag(hashtag: str, location: str) -> list[dict]:
                 "source": "instagram",
             })
     return venues
+
+
+def find_linkedin_decision_maker(
+    venue_name: str,
+    location: str,
+    country: str = "Portugal",
+) -> Optional[dict]:
+    """
+    Tavily search for a decision-maker's LinkedIn profile.
+    Strictly location-aware: results must mention the city OR country.
+    Returns {name, title, linkedin_url} or None.
+    """
+    # Extract just the city from "Rua X, Lisbon, Portugal"
+    city = location.split(",")[0].strip() if location else ""
+    loc_signals = [s.lower() for s in [city, country, "lisboa", "lisbon"] if s]
+
+    queries = [
+        f'"{venue_name}" "{city}" (gerente OR diretor OR director OR manager OR owner) site:linkedin.com/in',
+        f'"{venue_name}" {city} {country} general manager site:linkedin.com',
+        f'"{venue_name}" {country} food beverage site:linkedin.com',
+    ]
+    seen = set()
+    candidates = []
+    for q in queries:
+        for r in tavily_search(q, max_results=5):
+            url = r.get("url", "")
+            if "linkedin.com/in/" not in url or url in seen:
+                continue
+            seen.add(url)
+            title = r.get("title", "")
+            snippet = (r.get("content", "") or "").lower()
+            # Strict location filter — reject if no Portugal/Lisbon signal
+            blob = f"{title.lower()} {snippet}"
+            if not any(sig in blob for sig in loc_signals):
+                continue
+            # Verify the venue is actually mentioned (not just a coincidental match)
+            if venue_name.lower() not in blob:
+                continue
+            parts = [p.strip() for p in title.split(" - ")]
+            name = parts[0] if parts else ""
+            role = parts[1] if len(parts) > 1 else ""
+            candidates.append({
+                "name": name,
+                "title": role,
+                "linkedin_url": url,
+                "snippet": r.get("content", "")[:300],
+            })
+    if not candidates:
+        return None
+
+    priority = ["f&b", "food", "beverage", "general manager", "owner",
+                "director", "founder", "head", "operations", "manager", "gerente", "diretor"]
+    def _score(c):
+        t = (c.get("title") or "").lower()
+        for i, kw in enumerate(priority):
+            if kw in t:
+                return len(priority) - i
+        return 0
+    candidates.sort(key=_score, reverse=True)
+    top = candidates[0]
+    return top if _score(top) > 0 else None
 
 
 def search_directories(venue_type: str, location: str) -> list[dict]:

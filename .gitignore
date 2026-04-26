@@ -1,10 +1,34 @@
+# Secrets — NEVER commit
 .env
 *.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# macOS
 .DS_Store
+
+# Generated/temp data
 queues/
 data/
-*.png
-*.jpg
+logs/
+*.log
+
+# Generated chart images (in tempfile dirs — these never appear in repo, but just in case)
+funnel.png
+tier_bar.png
+weekly_activity.png
+stage_donut.png
+
+# IDE
+.vscode/
+.idea/
+*.swp

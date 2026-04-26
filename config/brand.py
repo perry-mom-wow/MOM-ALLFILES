@@ -1,4 +1,4 @@
-"""mom-wow brand colour palette."""
+"""MOM (Longevity Alchemists) brand colour palette."""
 
 # Primary
 GREEN       = "#6B7C52"   # Olive green
