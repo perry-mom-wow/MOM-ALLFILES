@@ -12,6 +12,14 @@ _ROOT = Path(__file__).parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+# Streamlit Cloud is configured to run this file as the main script.
+# When that happens, hand off to the real dashboard instead of executing
+# this module's setup code (which would just render a blank page).
+if __name__ == "__main__":
+    import runpy
+    runpy.run_path(str(_ROOT / "dashboard" / "app.py"), run_name="__main__")
+    sys.exit(0)
+
 import anthropic
 
 from config.settings import ANTHROPIC_API_KEY, load_icp
