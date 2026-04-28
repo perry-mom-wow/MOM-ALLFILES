@@ -2,10 +2,15 @@
 from __future__ import annotations
 
 import io
+import sys
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
+
+_ROOT = Path(__file__).parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 import plotly.graph_objects as go
 import plotly.express as px

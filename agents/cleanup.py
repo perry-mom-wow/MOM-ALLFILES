@@ -3,7 +3,14 @@ from __future__ import annotations
 
 import json
 import re
+import sys
+from pathlib import Path
 from typing import Optional
+
+# Ensure project root is on sys.path regardless of how this module is loaded.
+_ROOT = Path(__file__).parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 import anthropic
 

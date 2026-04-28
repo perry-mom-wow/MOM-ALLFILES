@@ -3,9 +3,15 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from dataclasses import dataclass, asdict
-
+from pathlib import Path
 from typing import Optional
+
+_ROOT = Path(__file__).parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 import anthropic
 
 from agents.discovery import ProspectRaw

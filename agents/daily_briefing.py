@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
+
+_ROOT = Path(__file__).parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from config.settings import load_reps, load_icp, REPORT_RECIPIENTS
 from config.brand import GREEN, GREEN_DARK, CREAM, WHITE, BLACK, MUSTARD, TERRACOTTA

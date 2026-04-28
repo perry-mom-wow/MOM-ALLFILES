@@ -3,9 +3,14 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
+
+_ROOT = Path(__file__).parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from config.settings import load_icp
 from tools import hubspot_client as hs
