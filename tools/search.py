@@ -8,7 +8,7 @@ from config.settings import TAVILY_API_KEY, GOOGLE_MAPS_API_KEY
 
 
 def tavily_search(query: str, max_results: int = 10) -> list[dict]:
-    """Return a list of results from Tavily search API."""
+    """Return a list of results from Tavily search API. Returns [] on failure (never raises)."""
     url = "https://api.tavily.com/search"
     payload = {
         "api_key": TAVILY_API_KEY,
@@ -17,9 +17,16 @@ def tavily_search(query: str, max_results: int = 10) -> list[dict]:
         "max_results": max_results,
         "include_answer": False,
     }
-    resp = requests.post(url, json=payload, timeout=30)
-    resp.raise_for_status()
-    return resp.json().get("results", [])
+    try:
+        resp = requests.post(url, json=payload, timeout=30)
+        if resp.status_code == 432:
+            print(f"   ⚠️  Tavily rate limit hit — skipping this query")
+            return []
+        resp.raise_for_status()
+        return resp.json().get("results", [])
+    except Exception as e:
+        print(f"   ⚠️  Tavily query failed ({e}) — skipping")
+        return []
 
 
 def google_maps_search(
@@ -131,12 +138,12 @@ def find_linkedin_decision_maker(
             seen.add(url)
             title = r.get("title", "")
             snippet = (r.get("content", "") or "").lower()
-            # Strict location filter — reject if no Portugal/Lisbon signal
+            # Need EITHER (a) venue name in title/snippet, OR (b) a location signal.
+            # This catches valid matches where LinkedIn snippet is short or location implicit.
             blob = f"{title.lower()} {snippet}"
-            if not any(sig in blob for sig in loc_signals):
-                continue
-            # Verify the venue is actually mentioned (not just a coincidental match)
-            if venue_name.lower() not in blob:
+            has_venue = venue_name.lower() in blob
+            has_location = any(sig in blob for sig in loc_signals)
+            if not (has_venue or has_location):
                 continue
             parts = [p.strip() for p in title.split(" - ")]
             name = parts[0] if parts else ""

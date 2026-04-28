@@ -90,7 +90,7 @@ def _filter_with_claude(prospects: list[ProspectRaw]) -> list[ProspectRaw]:
     print(f"   🔍 Filter: kept {len(kept)}, dropped {dropped} (non-venue / wrong country / junk)")
     return kept
 
-VenueType = Literal["beach_club", "restaurant", "cafe", "hotel", "gym", "wellness_center", "spa"]
+VenueType = Literal["beach_club", "restaurant", "bar", "cafe", "hotel", "gym", "wellness_center", "spa"]
 Tier = Literal[1, 2, 3]
 
 
@@ -117,6 +117,7 @@ class ProspectRaw:
 VENUE_TYPE_QUERIES = {
     "beach_club": ["beach club", "beach bar", "chiringuito"],
     "restaurant": ["restaurant", "restaurante"],
+    "bar": ["bar", "cocktail bar", "rooftop bar", "wine bar"],
     "cafe": ["café", "coffee shop", "juice bar"],
     "hotel": ["hotel", "resort", "boutique hotel"],
     "gym": ["gym", "fitness studio", "crossfit", "pilates studio"],
@@ -157,12 +158,19 @@ def discover_prospects(
     location: str,
     venue_types: list[VenueType],
     max_per_type: int = 15,
+    exclude_names: Optional[list[str]] = None,
+    query_overrides: Optional[dict[str, list[str]]] = None,
 ) -> list[ProspectRaw]:
-    """Discover prospects from all sources for given location and venue types."""
+    """Discover prospects from all sources for given location and venue types.
+
+    exclude_names: case-insensitive substrings; any prospect whose name contains one is dropped.
+    query_overrides: per-venue-type query lists that override VENUE_TYPE_QUERIES for this call.
+    """
     prospects: dict[str, ProspectRaw] = {}  # keyed by name+address to dedupe
+    overrides = query_overrides or {}
 
     for venue_type in venue_types:
-        queries = VENUE_TYPE_QUERIES.get(venue_type, [venue_type])
+        queries = overrides.get(venue_type) or VENUE_TYPE_QUERIES.get(venue_type, [venue_type])
         primary_query = queries[0]
 
         # 1. Google Maps (most reliable)
@@ -246,6 +254,15 @@ def discover_prospects(
     # Claude pre-filter: drop non-venues / wrong-country / junk titles, clean names
     raw_list = _filter_with_claude(raw_list)
 
+    # Apply caller-provided exclusion list (substring, case-insensitive)
+    if exclude_names:
+        needles = [n.lower() for n in exclude_names if n.strip()]
+        before = len(raw_list)
+        raw_list = [p for p in raw_list if not any(n in p.name.lower() for n in needles)]
+        dropped = before - len(raw_list)
+        if dropped:
+            print(f"   🚫 Excluded {dropped} prospects matching: {exclude_names}")
+
     # Cap AFTER filtering so the user gets max_per_type real venues, not filler
     result_list = raw_list[:max_per_type * len(venue_types)]
 
@@ -256,6 +273,44 @@ def discover_prospects(
             _enrich_from_website(p)
 
     return result_list
+
+
+def discover_named_venues(
+    venue_names: list[str],
+    location_hint: str = "Lisboa, Portugal",
+    venue_type: VenueType = "restaurant",
+) -> list[ProspectRaw]:
+    """Hand-picked seed list — skip Tavily/Maps/Instagram, go straight to research."""
+    prospects: list[ProspectRaw] = []
+    for name in venue_names:
+        name = name.strip()
+        if not name:
+            continue
+        print(f"   🎯 Seeding: {name}")
+        # Tavily quick lookup to find website + a snippet for the researcher
+        results = tavily_search(f'"{name}" {location_hint} restaurant bar website', max_results=3)
+        website = None
+        snippet = ""
+        for r in results:
+            url = r.get("url", "")
+            if url and "tripadvisor" not in url and "thefork" not in url and "instagram" not in url:
+                website = website or url
+                snippet = snippet or r.get("content", "")
+        prospects.append(ProspectRaw(
+            name=name,
+            venue_type=venue_type,
+            address=location_hint,
+            website=website,
+            tier=2,  # default to Tier 2 for hand-picked premium venues
+            source="seeded",
+            notes=snippet[:300],
+        ))
+
+    # Enrich each with website scrape for email/LinkedIn
+    for p in prospects:
+        if p.website and not p.email:
+            _enrich_from_website(p)
+    return prospects
 
 
 def _enrich_from_website(prospect: ProspectRaw) -> None:

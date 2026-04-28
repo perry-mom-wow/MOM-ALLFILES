@@ -58,12 +58,18 @@ def cmd_discover(args):
     location = args.location
     venue_types = args.types or ["beach_club", "restaurant", "hotel"]
 
-    print(f"\n🔍 Discovering prospects in {location!r}...")
-    print(f"   Venue types: {', '.join(venue_types)}")
-    print(f"   Max per type: {args.max_per}\n")
-
-    from agents.discovery import discover_prospects
-    prospects = discover_prospects(location, venue_types, max_per_type=args.max_per)
+    if args.venues:
+        venue_names = [v.strip() for v in args.venues.split(",") if v.strip()]
+        primary_type = venue_types[0] if venue_types else "restaurant"
+        print(f"\n🎯 Seeded discovery — {len(venue_names)} hand-picked venues in {location!r}\n")
+        from agents.discovery import discover_named_venues
+        prospects = discover_named_venues(venue_names, location_hint=location, venue_type=primary_type)
+    else:
+        print(f"\n🔍 Discovering prospects in {location!r}...")
+        print(f"   Venue types: {', '.join(venue_types)}")
+        print(f"   Max per type: {args.max_per}\n")
+        from agents.discovery import discover_prospects
+        prospects = discover_prospects(location, venue_types, max_per_type=args.max_per)
     print(f"✅ Found {len(prospects)} prospects.\n")
 
     for i, raw in enumerate(prospects, 1):
@@ -148,6 +154,21 @@ def cmd_queue(args):
     print(format_queue_for_display(items))
 
 
+def cmd_enrich(_args):
+    from agents.enrichment import re_enrich_all
+    re_enrich_all()
+
+
+def cmd_morning(_args):
+    from agents.daily_briefing import run_morning_briefing
+    run_morning_briefing()
+
+
+def cmd_evening(_args):
+    from agents.daily_briefing import run_evening_summary
+    run_evening_summary()
+
+
 def cmd_cleanup(args):
     from agents.cleanup import cleanup
     cleanup(dry_run=not args.apply)
@@ -170,6 +191,7 @@ def main():
     p_discover.add_argument("--types", "-t", nargs="+", choices=VENUE_TYPES, help="Venue types to target")
     p_discover.add_argument("--max-per", type=int, default=10, help="Max prospects per venue type")
     p_discover.add_argument("--rep", "-r", help="Rep ID (e.g. marcus, laura)")
+    p_discover.add_argument("--venues", help="Comma-separated list of hand-picked venue names (skips Tavily search)")
 
     # followup
     p_followup = sub.add_parser("followup", help="Run daily follow-up sequencer")
@@ -182,6 +204,13 @@ def main():
     # queue
     p_queue = sub.add_parser("queue", help="View today's outreach queue for a rep")
     p_queue.add_argument("--rep", "-r", help="Rep ID")
+
+    # enrich
+    sub.add_parser("enrich", help="Re-enrich HubSpot contacts that are missing email/phone/social")
+
+    # morning + evening (automated daily)
+    sub.add_parser("morning", help="Morning: discover + email each rep their daily queue")
+    sub.add_parser("evening", help="Evening: send Perry an end-of-day summary")
 
     # cleanup
     p_cleanup = sub.add_parser("cleanup", help="Find and remove junk deals from HubSpot")
@@ -200,6 +229,12 @@ def main():
         cmd_report(args)
     elif args.command == "queue":
         cmd_queue(args)
+    elif args.command == "enrich":
+        cmd_enrich(args)
+    elif args.command == "morning":
+        cmd_morning(args)
+    elif args.command == "evening":
+        cmd_evening(args)
     elif args.command == "cleanup":
         cmd_cleanup(args)
     elif args.command == "dashboard":

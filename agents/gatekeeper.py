@@ -11,6 +11,7 @@ from config.settings import ANTHROPIC_API_KEY, load_icp
 
 ICP = load_icp()
 TARGET_COUNTRY = ICP.get("brand", {}).get("country", "Portugal")
+TARGET_VENUE_TYPES = ", ".join(ICP.get("venue_types", []))
 _client: Optional[anthropic.Anthropic] = None
 
 
@@ -29,8 +30,7 @@ Decide if this prospect is worth adding to the CRM. Reject if ANY of these apply
 2. The venue is not in {country}
 3. The venue doesn't appear to actually exist as a single, real establishment
 4. The "venue" is actually a media outlet, blog, aggregator, or hotel chain corporate page
-5. The venue type doesn't match what we sell to (we sell to: restaurant, beach_club, cafe, hotel,
-   gym, wellness_center, spa)
+5. The venue type doesn't match what we sell to (we sell to: {venue_types})
 
 Otherwise: ACCEPT.
 
@@ -61,7 +61,7 @@ def validate_prospect(profile: ProspectProfile) -> tuple[bool, str]:
             max_tokens=200,
             system=[{
                 "type": "text",
-                "text": GATEKEEPER_SYSTEM.replace("{country}", TARGET_COUNTRY),
+                "text": GATEKEEPER_SYSTEM.replace("{country}", TARGET_COUNTRY).replace("{venue_types}", TARGET_VENUE_TYPES),
                 "cache_control": {"type": "ephemeral"},
             }],
             messages=[{"role": "user", "content": json.dumps(payload)}],

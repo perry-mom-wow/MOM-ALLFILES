@@ -104,13 +104,41 @@ def _queue_active_followup(deal_id, deal_state, state, today, rep_id, prospect_n
     msg_type_map = {0: "followup_day3", 1: "followup_day7", 2: "followup_day14"}
     msg_type = msg_type_map.get(idx, "followup_day14")
 
-    # Load the pre-generated sequence from HubSpot notes (simplified: use a placeholder)
-    # In production: retrieve from stored sequence JSON
-    message_body = f"[{msg_type.upper()} — to be loaded from stored sequence for {prospect_name}]"
+    # Load the saved sequence
+    from agents.crm import _load_sequence
+    seq = _load_sequence(deal_id) or {}
+    msg = (seq.get("messages") or {}).get(msg_type, {})
+    message_body = msg.get("body") or f"[{msg_type.upper()} — sequence not found for {prospect_name}]"
 
+    # ── Send email automatically if we have an email + body ──
+    contact_email = seq.get("contact_email")
+    email_sent = False
+    if contact_email and msg.get("body"):
+        from tools.email_sender import send_outreach_email
+        result = send_outreach_email(
+            to_email=contact_email,
+            subject=f"Following up — {prospect_name}",
+            body_text=msg["body"],
+            from_name=seq.get("rep_name"),
+            reply_to=seq.get("rep_email"),
+        )
+        if result.get("sent"):
+            email_sent = True
+            try:
+                hs.log_note(
+                    contact_id=None,  # noqa — note logged by deal lookup if needed
+                    deal_id=deal_id,
+                    body=f"📧 EMAIL SENT (Day {day}) to {contact_email} (id: {result.get('id')})",
+                )
+            except Exception:
+                pass
+
+    # ── Always queue LinkedIn version for the rep too ──
     add_to_queue(rep_id, {
         "venue_name": prospect_name,
-        "message_type": f"Follow-up Day {day}",
+        "contact_name": seq.get("contact_name"),
+        "linkedin_url": seq.get("linkedin_url"),
+        "message_type": f"Follow-up Day {day}{' (email auto-sent ✓)' if email_sent else ''}",
         "channel": "LinkedIn",
         "message": message_body,
         "deal_id": deal_id,

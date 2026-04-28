@@ -17,7 +17,10 @@ import plotly.graph_objects as go
 
 from config.settings import load_reps, save_reps, load_icp
 from config.brand import GREEN, GREEN_DARK, WHITE, BLACK, CREAM, PINK, TERRACOTTA, ORANGE, MUSTARD, BLUE_LIGHT
-from tools.outreach_queue import load_queue, clear_queue
+from tools.outreach_queue import (
+    load_queue, clear_queue, remove_from_queue,
+    load_pending, log_sent, remove_pending_item,
+)
 
 _LOGO = Path(__file__).parent.parent / "static" / "mom-logo.png"
 
@@ -35,7 +38,7 @@ _BRAND_FONT_FACES = """
 """
 st.set_page_config(
     page_title="MOM · Sales Agent",
-    page_icon=str(_LOGO) if _LOGO.exists() else "🌿",
+    page_icon="🍄",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -110,17 +113,19 @@ st.markdown(f"""<style>
   [data-testid="stSidebar"] .stRadio label:hover {{
     background-color: {GREEN}33;
   }}
-  .sidebar-logo {{
-    text-align: center;
-    padding: 1.25rem 1rem 1rem 1rem;
+  /* Sidebar logo container — keep tight, no extra background box */
+  [data-testid="stSidebar"] [data-testid="stImage"] {{
     background-color: {CREAM};
     border-radius: 10px;
-    margin: 0 0 1rem 0;
+    padding: 1rem;
+    margin: 0.5rem 0 1rem 0;
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }}
-  .sidebar-logo img {{
+  [data-testid="stSidebar"] [data-testid="stImage"] img {{
     max-width: 80%;
     height: auto;
+    display: block;
+    margin: 0 auto;
   }}
   .sidebar-tagline {{
     text-align: center;
@@ -193,12 +198,10 @@ LOGO_PATH = _LOGO
 
 
 def sidebar():
-    st.sidebar.markdown('<div class="sidebar-logo">', unsafe_allow_html=True)
     if LOGO_PATH.exists():
         st.sidebar.image(str(LOGO_PATH), use_container_width=True)
     else:
         st.sidebar.markdown(f"<h1 style='text-align:center;color:{CREAM};'>MOM</h1>", unsafe_allow_html=True)
-    st.sidebar.markdown('</div>', unsafe_allow_html=True)
     st.sidebar.markdown(
         '<div class="sidebar-tagline">Sales Agent</div>',
         unsafe_allow_html=True,
@@ -224,8 +227,26 @@ def sidebar():
 # ── Pipeline page ──────────────────────────────────────────────────────────────
 
 def page_pipeline():
-    st.title("📊 Pipeline")
-    st.caption("Live data from HubSpot")
+    title_col, btn_col = st.columns([4, 1])
+    with title_col:
+        st.title("📊 Pipeline")
+        st.caption("Live data from HubSpot")
+    with btn_col:
+        st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+        if st.button("🧹 Clean CRM", help="Find and remove junk + duplicate deals"):
+            with st.spinner("Scanning HubSpot..."):
+                try:
+                    from agents.cleanup import cleanup
+                    result = cleanup(dry_run=False)
+                    if result["deleted"]:
+                        st.success(f"Deleted {result['deleted']} deals.")
+                        with st.expander("What was removed"):
+                            for j in result["junk"]:
+                                st.markdown(f"- **{j['name']}** — _{j['reason']}_")
+                    else:
+                        st.info("CRM is already clean ✨")
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
     try:
         from tools import hubspot_client as hs
@@ -240,16 +261,21 @@ def page_pipeline():
 
     import pandas as pd
     from agents.reporter import _HS_TO_OURS
+    import re
     rows = []
     for d in deals:
         props = d.get("properties", {})
         hs_stage = (props.get("dealstage") or "").lower()
         our_stage = _HS_TO_OURS.get(hs_stage, hs_stage)
+        deal_name = props.get("dealname", "")
+        # Rep ID is encoded as "[rep_id]" suffix in the deal name during onboarding.
+        rep_match = re.search(r"\[([^\]]+)\]\s*$", deal_name)
+        rep = rep_match.group(1) if rep_match else (props.get("hubspot_owner_id") or "")
         rows.append({
-            "Deal": props.get("dealname", ""),
+            "Deal": deal_name,
             "Stage": STAGE_LABELS.get(our_stage, our_stage),
             "Value (€/mo)": float(props.get("amount") or 0),
-            "Rep": props.get("hubspot_owner_id", ""),
+            "Rep": rep,
             "Next Follow-up": (props.get("closedate") or "")[:10],
         })
     df = pd.DataFrame(rows)
@@ -304,67 +330,135 @@ def page_pipeline():
 def page_queue():
     rep_id = st.session_state.get("active_rep_id", "marcus")
     rep_name = st.session_state.get("active_rep_name", "Rep")
-    st.title(f"📬 Daily Queue — {rep_name}")
-    st.caption(f"Messages ready to send today ({date.today().isoformat()})")
 
-    items = load_queue(rep_id)
+    items = load_pending(rep_id)
+    total = len(items)
+    today_iso = date.today().isoformat()
+    carryover = sum(1 for i in items if i.get("_source_date") != today_iso)
+
+    st.title(f"Daily Queue — {rep_name}")
 
     if not items:
-        st.success("Queue is empty — all caught up! 🎉")
+        st.success("Queue is empty — all caught up!")
         return
 
-    st.info(f"{len(items)} messages to send today. Takes ~10 mins on LinkedIn.")
+    if carryover:
+        st.info(f"{carryover} message(s) carried over from previous days.")
 
-    st.warning(
-        "⚠️ **Did someone reply?** If a prospect responds via ANY channel "
-        "(LinkedIn, email, WhatsApp, phone, in person) — click **'They Replied'** immediately. "
-        "This stops ALL automated follow-ups so you don't annoy them.",
-        icon="🛑",
-    )
+    # Track position in queue; reset if queue shrank (item was removed)
+    if "queue_index" not in st.session_state or st.session_state.queue_index >= total:
+        st.session_state.queue_index = 0
+
+    idx = st.session_state.queue_index
+    item = items[idx]
+
+    # ── Progress bar ──────────────────────────────────────────────────────────
+    done = idx  # items already marked sent this session
+    st.caption(f"Message {idx + 1} of {total}")
+    st.progress(idx / total)
+
     st.divider()
 
-    for i, item in enumerate(items, 1):
-        with st.expander(f"[{i}] {item.get('venue_name')} — {item.get('message_type')}"):
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                st.markdown(f"**Channel:** {item.get('channel')}")
-                if item.get("linkedin_url"):
-                    st.markdown(f"[Open LinkedIn Profile]({item['linkedin_url']})")
-                if item.get("contact_name"):
-                    st.markdown(f"**Contact:** {item['contact_name']}")
+    # ── Main card ─────────────────────────────────────────────────────────────
+    venue = item.get("venue_name", "Unknown")
+    msg_type = item.get("message_type", "")
+    channel = item.get("channel", "LinkedIn")
+    contact_name = item.get("contact_name") or ""
+    contact_title = item.get("contact_title") or ""
+    linkedin_url = item.get("linkedin_url") or ""
+    email = item.get("email") or ""
+    message = item.get("message", "")
+    deal_id = item.get("deal_id", "")
+    contact_id = item.get("contact_id", "")
 
-                st.divider()
-                st.markdown("**They responded?**")
-                reply_channel = st.selectbox(
-                    "Via which channel?",
-                    ["LinkedIn", "Email", "WhatsApp", "Phone", "In person", "Other"],
-                    key=f"reply_channel_{i}",
-                )
-                contact_id = item.get("contact_id", "")
-                deal_id = item.get("deal_id", "")
-                if st.button(
-                    "🛑 They Replied — Stop All Follow-ups",
-                    key=f"replied_{i}",
-                    type="primary",
-                    disabled=not deal_id,
-                ):
-                    try:
-                        from agents.crm import mark_replied
-                        mark_replied(deal_id, contact_id, channel=reply_channel)
-                        st.success(f"✅ All automated messages stopped for {item.get('venue_name')}. You're in the driver's seat now.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-            with col2:
-                st.text_area(
-                    "Message (copy-paste ready)",
-                    value=item.get("message", ""),
-                    height=150,
-                    key=f"msg_{i}",
+    st.subheader(venue)
+    meta_parts = [msg_type, channel]
+    if contact_name:
+        meta_parts.append(contact_name)
+    if contact_title:
+        meta_parts.append(contact_title)
+    src_date = item.get("_source_date")
+    if src_date and src_date != today_iso:
+        meta_parts.append(f"queued {src_date}")
+    st.caption("  ·  ".join(meta_parts))
+
+    # Contact links
+    link_cols = st.columns(4)
+    col_i = 0
+    if linkedin_url:
+        link_cols[col_i].link_button("Open LinkedIn", linkedin_url, type="primary")
+        col_i += 1
+    if email:
+        link_cols[col_i].link_button("Open Email", f"mailto:{email}")
+        col_i += 1
+
+    st.divider()
+
+    # Message — st.code gives a built-in copy button
+    st.markdown("**Message** — click the copy icon top-right to copy")
+    st.code(message, language=None, wrap_lines=True)
+
+    st.divider()
+
+    # ── Actions ───────────────────────────────────────────────────────────────
+    action_cols = st.columns([2, 1, 2])
+
+    with action_cols[0]:
+        if st.button("✅  Sent — Next", type="primary", use_container_width=True):
+            if deal_id:
+                try:
+                    from tools import hubspot_client as hs
+                    hs.update_deal_stage(deal_id, "contacted")
+                except Exception as e:
+                    st.warning(f"Couldn't update HubSpot stage: {e}")
+            log_sent(rep_id, item)
+            remove_pending_item(rep_id, item)
+            if idx >= total - 1:
+                st.session_state.queue_index = max(0, total - 2)
+            st.rerun()
+
+    with action_cols[1]:
+        if st.button("Skip", use_container_width=True):
+            st.session_state.queue_index = (idx + 1) % total
+            st.rerun()
+
+    with action_cols[2]:
+        with st.popover("🛑 They Replied", use_container_width=True):
+            st.markdown(f"**Stop all follow-ups for {venue}?**")
+            st.caption("Use this if they reply via LinkedIn, email, WhatsApp, phone, or in person.")
+            reply_channel = st.selectbox(
+                "Channel they replied on",
+                ["LinkedIn", "Email", "WhatsApp", "Phone", "In person", "Other"],
+                key="reply_channel_popover",
+            )
+            if st.button("Confirm — Stop All Follow-ups", type="primary", disabled=not deal_id):
+                try:
+                    from agents.crm import mark_replied
+                    mark_replied(deal_id, contact_id, channel=reply_channel)
+                    st.success(f"Stopped all follow-ups for {venue}.")
+                    st.session_state.queue_index = max(0, idx - 1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    st.divider()
+
+    # ── Remaining list (collapsed) ────────────────────────────────────────────
+    remaining = [it for j, it in enumerate(items) if j != idx]
+    if remaining:
+        with st.expander(f"See remaining {len(remaining)} messages"):
+            for j, it in enumerate(remaining):
+                actual_j = j if j < idx else j + 1
+                st.markdown(
+                    f"**{actual_j + 1}.** {it.get('venue_name')} — "
+                    f"{it.get('message_type')} · {it.get('channel')}"
                 )
 
-    if st.button("🗑️ Clear Today's Queue", type="secondary"):
+    st.divider()
+    if st.button("Clear today's queue file", type="secondary",
+                 help="Only deletes today's queue file. Carryover items from previous days stay."):
         clear_queue(rep_id)
+        st.session_state.queue_index = 0
         st.rerun()
 
 
@@ -507,7 +601,7 @@ def page_team():
 def page_reports():
     st.title("📈 Reports")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         if st.button("📊 Generate Report Now", type="primary"):
             with st.spinner("Generating report..."):
@@ -526,20 +620,6 @@ def page_reports():
                     from agents.reporter import send_friday_report
                     send_friday_report()
                     st.success("Cleanup ran and email sent!")
-                except Exception as e:
-                    st.error(f"Error: {e}")
-
-    with col3:
-        if st.button("🧹 Clean CRM Now"):
-            with st.spinner("Scanning HubSpot for junk + duplicates..."):
-                try:
-                    from agents.cleanup import cleanup
-                    result = cleanup(dry_run=False)
-                    st.success(f"Cleaned — deleted {result['deleted']} deals.")
-                    if result["junk"]:
-                        with st.expander("What was removed"):
-                            for j in result["junk"]:
-                                st.markdown(f"- **{j['name']}** — _{j['reason']}_")
                 except Exception as e:
                     st.error(f"Error: {e}")
 

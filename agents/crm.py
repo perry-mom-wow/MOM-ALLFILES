@@ -1,9 +1,43 @@
 """CRM agent: orchestrate HubSpot operations for a prospect."""
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Optional
+
+SEQUENCE_DIR = Path(__file__).parent.parent / "data" / "sequences"
+SEQUENCE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _save_sequence(deal_id: str, profile, sequence, rep_id: str) -> None:
+    """Persist the full outreach sequence so the sequencer can send the right message later."""
+    from config.settings import get_rep_by_id
+    rep = get_rep_by_id(rep_id) or {}
+    msgs = {m.message_type: {"subject": m.subject, "body": m.body, "channel": m.channel} for m in sequence.messages}
+    data = {
+        "deal_id": deal_id,
+        "prospect_name": profile.name,
+        "contact_name": profile.contact_name,
+        "contact_title": profile.contact_title,
+        "contact_email": profile.email,
+        "linkedin_url": profile.linkedin_url,
+        "rep_id": rep_id,
+        "rep_name": rep.get("name"),
+        "rep_email": rep.get("email"),
+        "messages": msgs,
+    }
+    with open(SEQUENCE_DIR / f"{deal_id}.json", "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _load_sequence(deal_id: str) -> Optional[dict]:
+    path = SEQUENCE_DIR / f"{deal_id}.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
 
 from agents.researcher import ProspectProfile
 from agents.writer import OutreachSequence
@@ -59,19 +93,23 @@ def onboard_prospect(
         domain=_domain_from_url(profile.website),
     )
 
-    # Contact
-    contact_parts = (profile.contact_name or "Unknown Contact").split(" ", 1)
-    first = contact_parts[0]
-    last = contact_parts[1] if len(contact_parts) > 1 else ""
-    contact_id = hs.upsert_contact(
-        email=profile.email,
-        first_name=first,
-        last_name=last,
-        company_id=company_id,
-        linkedin_url=profile.linkedin_url,
-        instagram_handle=profile.instagram_handle,
-        phone=profile.phone,
-    )
+    # Contact — only create if we have a real signal (name OR email OR phone)
+    has_real_contact = bool(profile.contact_name or profile.email or profile.phone)
+    if has_real_contact:
+        contact_parts = (profile.contact_name or profile.email or "Unknown").split(" ", 1)
+        first = contact_parts[0]
+        last = contact_parts[1] if len(contact_parts) > 1 else ""
+        contact_id = hs.upsert_contact(
+            email=profile.email,
+            first_name=first,
+            last_name=last,
+            company_id=company_id,
+            linkedin_url=profile.linkedin_url,
+            instagram_handle=profile.instagram_handle,
+            phone=profile.phone,
+        )
+    else:
+        contact_id = None  # skip contact creation for nameless / contactless prospects
 
     # Revenue potential
     tier_key = f"tier_{profile.tier}"
@@ -100,31 +138,63 @@ def onboard_prospect(
 
     # Queue connection request + opener for the rep
     opener = next((m for m in sequence.messages if m.message_type == "linkedin_connection"), None)
+    contact_block = {
+        "venue_name": profile.name,
+        "contact_name": profile.contact_name,
+        "contact_title": profile.contact_title,
+        "email": profile.email,
+        "phone": profile.phone,
+        "linkedin_url": profile.linkedin_url,
+        "instagram_handle": profile.instagram_handle,
+        "address": profile.address,
+        "deal_id": deal_id,
+    }
     if opener:
         add_to_queue(rep_id, {
-            "venue_name": profile.name,
-            "contact_name": profile.contact_name,
-            "linkedin_url": profile.linkedin_url,
+            **contact_block,
             "message_type": "LinkedIn Connection Request",
             "channel": "LinkedIn",
             "message": opener.body,
-            "deal_id": deal_id,
         })
 
     opener_msg = next((m for m in sequence.messages if m.message_type == "linkedin_opener"), None)
     if opener_msg:
         add_to_queue(rep_id, {
-            "venue_name": profile.name,
-            "contact_name": profile.contact_name,
-            "linkedin_url": profile.linkedin_url,
+            **contact_block,
             "message_type": "LinkedIn Opening Message",
             "channel": "LinkedIn",
             "message": opener_msg.body,
-            "deal_id": deal_id,
         })
 
-    # Move deal to Contacted
-    hs.update_deal_stage(deal_id, "contacted")
+    # ── Save full sequence JSON for the sequencer to use later ──
+    _save_sequence(deal_id, profile, sequence, rep_id)
+
+    # ── If AUTO_EMAIL_ENABLED + we have a real email, send the opener now ──
+    email_sent = False
+    if profile.email:
+        email_opener = next((m for m in sequence.messages if m.message_type == "email_opener"), None)
+        if email_opener:
+            from tools.email_sender import send_outreach_email
+            from config.settings import get_rep_by_id
+            rep = get_rep_by_id(rep_id) or {}
+            result = send_outreach_email(
+                to_email=profile.email,
+                subject=email_opener.subject or f"Quick note from MOM about {profile.name}",
+                body_text=email_opener.body,
+                from_name=rep.get("name"),
+                reply_to=rep.get("email"),
+            )
+            if result.get("sent"):
+                email_sent = True
+                hs.log_note(contact_id, deal_id, f"📧 EMAIL SENT to {profile.email} (id: {result.get('id')})")
+                print(f"      📧 Email sent → {profile.email}")
+            elif result.get("error") and "AUTO_EMAIL_ENABLED is off" not in result["error"]:
+                print(f"      ⚠️  Email send failed: {result['error']}")
+
+    # Only advance to "Contacted" if outreach actually went out (auto-email).
+    # LinkedIn-only deals stay in "Prospect" until the rep marks them sent in the queue UI.
+    if email_sent:
+        hs.update_deal_stage(deal_id, "contacted")
 
     return {
         "company_id": company_id,

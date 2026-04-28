@@ -9,6 +9,7 @@ brand:
 venue_types:
   - beach_club
   - restaurant
+  - bar
   - cafe
   - hotel
   - gym

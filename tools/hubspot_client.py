@@ -26,21 +26,49 @@ def _get_client() -> hubspot.Client:
 ICP = load_icp()
 STAGE_MAP = {s["id"]: s["label"] for s in ICP["pipeline_stages"]}
 
-# Map our internal stage IDs → HubSpot default pipeline stage IDs.
-# HubSpot's free-tier default pipeline only allows these 7 stages.
-HS_STAGE_MAP = {
-    "prospect":       "appointmentscheduled",
-    "contacted":      "qualifiedtobuy",
-    "replied":        "presentationscheduled",
-    "tasting_booked": "decisionmakerboughtin",
-    "nurture":        "qualifiedtobuy",
-    "won":            "closedwon",
-    "lost":           "closedlost",
+# Per-tier HubSpot pipeline IDs in the new portal (147910665).
+# Tier 1 → "Tier 1 - Marcus" pipeline (HubSpot's default-pipeline shell).
+# Tier 2 + 3 → "Tier 2/3 - Laura" pipeline.
+PIPELINE_TIER_1 = "default"
+PIPELINE_TIER_23 = "3713146104"
+
+# Map our internal stage names → HubSpot stage IDs, per pipeline.
+# Both pipelines have the same labels but different stage IDs.
+STAGE_MAP_BY_PIPELINE = {
+    PIPELINE_TIER_1: {
+        "prospect":       "appointmentscheduled",
+        "contacted":      "qualifiedtobuy",
+        "replied":        "presentationscheduled",
+        "tasting_booked": "contractsent",
+        "nurture":        "4961801429",
+        "won":            "closedwon",
+        "lost":           "closedlost",
+        "active_client":  "4961801428",
+    },
+    PIPELINE_TIER_23: {
+        "prospect":       "5143548138",
+        "contacted":      "5143548139",
+        "replied":        "5143548140",
+        "tasting_booked": "5143548142",
+        "nurture":        "5143548146",
+        "won":            "5143548143",
+        "lost":           "5143548144",
+        "active_client":  "5143548145",
+    },
 }
 
 
+def pipeline_for_tier(tier: int) -> str:
+    return PIPELINE_TIER_1 if int(tier) == 1 else PIPELINE_TIER_23
+
+
+def _stage_id(pipeline: str, our_stage: str) -> str:
+    return STAGE_MAP_BY_PIPELINE.get(pipeline, {}).get(our_stage, our_stage)
+
+
+# Backwards-compat shim — assumes tier-1 pipeline; only used by legacy calls.
 def _hs_stage(stage: str) -> str:
-    return HS_STAGE_MAP.get(stage, stage)
+    return _stage_id(PIPELINE_TIER_1, stage)
 
 
 # ── Companies ──────────────────────────────────────────────────────────────────
@@ -109,12 +137,27 @@ def upsert_contact(
             _associate(client, "contact", contact_id, "company", company_id, 280)
             return contact_id
 
-    resp = client.crm.contacts.basic_api.create(
-        simple_public_object_input_for_create=ContactInput(properties=props)
-    )
+    resp = _create_contact_tolerant(client, props)
     contact_id = resp.id
     _associate(client, "contact", contact_id, "company", company_id, 280)
     return contact_id
+
+
+def _create_contact_tolerant(client, props: dict[str, Any]):
+    """Create a contact, retrying without any properties HubSpot says don't exist."""
+    while True:
+        try:
+            return client.crm.contacts.basic_api.create(
+                simple_public_object_input_for_create=ContactInput(properties=props)
+            )
+        except Exception as e:
+            haystack = str(getattr(e, "body", "") or "") + " " + str(e)
+            missing = re.findall(r'Property\s+\\?"([^"\\]+)\\?"\s+does not exist', haystack)
+            if not missing or not any(m in props for m in missing):
+                raise
+            for m in missing:
+                props.pop(m, None)
+            print(f"      ⚠️  HubSpot portal missing properties — dropped: {missing}; retrying.")
 
 
 def _associate(client, from_type, from_id, to_type, to_id, association_type_id):
@@ -148,10 +191,11 @@ def create_deal(
 ) -> str:
     """Create a deal in the pipeline. Returns deal ID."""
     client = _get_client()
+    pipeline_id = pipeline_for_tier(tier)
     props: dict[str, Any] = {
         "dealname": f"{name} [{rep_id}]",
-        "pipeline": HUBSPOT_PIPELINE_ID,
-        "dealstage": _hs_stage(stage),
+        "pipeline": pipeline_id,
+        "dealstage": _stage_id(pipeline_id, stage),
         "amount": str(revenue_potential_eur),
     }
     if next_followup_date:
@@ -162,7 +206,8 @@ def create_deal(
     )
     deal_id = resp.id
     _associate(client, "deal", deal_id, "company", company_id, 341)
-    _associate(client, "deal", deal_id, "contact", contact_id, 3)
+    if contact_id:
+        _associate(client, "deal", deal_id, "contact", contact_id, 3)
     return deal_id
 
 
@@ -235,10 +280,13 @@ def get_deal_associations(deal_id: str) -> dict:
 
 
 def update_deal_stage(deal_id: str, stage: str) -> None:
+    """Update a deal's stage. Looks up the deal's pipeline first so we pick the right stage ID."""
     client = _get_client()
+    deal = client.crm.deals.basic_api.get_by_id(deal_id=deal_id, properties=["pipeline"])
+    pipeline_id = (deal.properties or {}).get("pipeline") or PIPELINE_TIER_1
     client.crm.deals.basic_api.update(
         deal_id=deal_id,
-        simple_public_object_input={"properties": {"dealstage": _hs_stage(stage)}},
+        simple_public_object_input={"properties": {"dealstage": _stage_id(pipeline_id, stage)}},
     )
 
 
@@ -255,8 +303,8 @@ def update_deal_followup(deal_id: str, next_date: date, re_engagement_count: Opt
 
 # ── Activities / Notes ─────────────────────────────────────────────────────────
 
-def log_note(contact_id: str, deal_id: str, body: str) -> None:
-    """Log a note on a contact and deal using the modern v3 Notes API."""
+def log_note(contact_id: Optional[str], deal_id: str, body: str) -> None:
+    """Log a note on a deal (and contact, if provided) using the modern v3 Notes API."""
     client = _get_client()
     timestamp_ms = int(datetime.utcnow().timestamp() * 1000)
 
@@ -275,9 +323,10 @@ def log_note(contact_id: str, deal_id: str, body: str) -> None:
     except Exception:
         return  # silently skip if note creation fails — non-critical
 
-    # Associate the note to the contact (association type 202) and deal (214)
-    _associate(client, "notes", note_id, "contact", contact_id, 202)
+    # Associate the note to the deal always; to the contact only if provided
     _associate(client, "notes", note_id, "deal", deal_id, 214)
+    if contact_id:
+        _associate(client, "notes", note_id, "contact", contact_id, 202)
 
 
 # ── Reporting queries ──────────────────────────────────────────────────────────
