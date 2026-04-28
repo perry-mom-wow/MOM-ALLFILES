@@ -43,6 +43,15 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# TEMP DIAGNOSTIC: confirm what HubSpot token Streamlit is actually loading.
+# Remove once auth works.
+from config.settings import HUBSPOT_API_KEY as _HK
+st.warning(
+    f"DEBUG HubSpot token: len={len(_HK)} | "
+    f"prefix={_HK[:12]!r} | suffix={_HK[-6:]!r} | "
+    f"has_whitespace={any(c.isspace() for c in _HK)}"
+)
+
 # ── Brand CSS ──────────────────────────────────────────────────────────────────
 st.markdown(f"""<style>
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&display=swap');
