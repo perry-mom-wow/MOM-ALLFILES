@@ -11,6 +11,21 @@ BASE_DIR = Path(__file__).parent.parent
 CONFIG_DIR = BASE_DIR / "config"
 
 
+def _secret(key: str, default: str = "") -> str:
+    """Look up a secret from Streamlit Cloud's st.secrets first, then env, then default.
+
+    Streamlit Cloud injects st.secrets at runtime; locally we fall back to .env.
+    Importing streamlit lazily so this module also works in non-Streamlit contexts (CLI, cron).
+    """
+    try:
+        import streamlit as st  # type: ignore
+        if key in st.secrets:
+            return str(st.secrets[key])
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+
 def _load_yaml(filename: str) -> dict:
     path = CONFIG_DIR / filename
     with open(path) as f:
@@ -36,15 +51,15 @@ def get_rep_by_id(rep_id: str):
     return next((r for r in load_reps() if r["id"] == rep_id), None)
 
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
-GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
-HUBSPOT_API_KEY = os.getenv("HUBSPOT_API_KEY", "")
-HUBSPOT_PIPELINE_ID = os.getenv("HUBSPOT_PIPELINE_ID", "default")
-HUNTER_API_KEY = os.getenv("HUNTER_API_KEY", "")
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-REPORT_FROM_EMAIL = os.getenv("REPORT_FROM_EMAIL", "reports@mom-wow.com")
+ANTHROPIC_API_KEY = _secret("ANTHROPIC_API_KEY")
+TAVILY_API_KEY = _secret("TAVILY_API_KEY")
+GOOGLE_MAPS_API_KEY = _secret("GOOGLE_MAPS_API_KEY")
+HUBSPOT_API_KEY = _secret("HUBSPOT_API_KEY")
+HUBSPOT_PIPELINE_ID = _secret("HUBSPOT_PIPELINE_ID", "default")
+HUNTER_API_KEY = _secret("HUNTER_API_KEY")
+SENDGRID_API_KEY = _secret("SENDGRID_API_KEY")
+RESEND_API_KEY = _secret("RESEND_API_KEY")
+REPORT_FROM_EMAIL = _secret("REPORT_FROM_EMAIL", "reports@mom-wow.com")
 REPORT_RECIPIENTS = [
-    e.strip() for e in os.getenv("REPORT_RECIPIENTS", "perry@mom-wow.com").split(",")
+    e.strip() for e in _secret("REPORT_RECIPIENTS", "perry@mom-wow.com").split(",")
 ]
