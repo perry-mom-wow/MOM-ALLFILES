@@ -20,10 +20,10 @@ def _secret(key: str, default: str = "") -> str:
     try:
         import streamlit as st  # type: ignore
         if key in st.secrets:
-            return str(st.secrets[key])
+            return str(st.secrets[key]).strip()
     except Exception:
         pass
-    return os.getenv(key, default)
+    return os.getenv(key, default).strip()
 
 
 def _load_yaml(filename: str) -> dict:
