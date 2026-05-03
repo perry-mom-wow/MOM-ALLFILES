@@ -63,3 +63,5 @@ REPORT_FROM_EMAIL = _secret("REPORT_FROM_EMAIL", "reports@mom-wow.com")
 REPORT_RECIPIENTS = [
     e.strip() for e in _secret("REPORT_RECIPIENTS", "perry@mom-wow.com").split(",")
 ]
+# Public product-portfolio URL appended as a P.S. to cold emails. Empty = suppressed.
+PORTFOLIO_URL = _secret("PORTFOLIO_URL", "")

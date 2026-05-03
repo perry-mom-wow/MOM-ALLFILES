@@ -27,9 +27,20 @@ _ROOT = Path(__file__).parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from config.settings import get_rep_by_id
+from config.settings import get_rep_by_id, PORTFOLIO_URL
 from tools import hubspot_client as hs
 from tools.email_sender import send_outreach_email
+
+
+def _with_portfolio_ps(body: str) -> str:
+    """Append a P.S. with the product-portfolio URL when one is configured.
+
+    If PORTFOLIO_URL is empty (placeholder state), the body is returned unchanged
+    so we don't send a broken link to prospects.
+    """
+    if not PORTFOLIO_URL:
+        return body
+    return f"{body}\n\nP.S. Here's our product portfolio if you'd like a deeper look: {PORTFOLIO_URL}"
 
 DAILY_LIMIT = 30
 PERRY_REP_ID = "perry_patraszewski"
@@ -127,12 +138,11 @@ def prepare(today: Optional[date] = None) -> dict:
 
 
 def send(today: Optional[date] = None) -> dict:
-    """Send each queued email; record outcomes in <date>.sent.json."""
+    """Cron-mode: read prepared queue file and send all entries."""
     today = today or date.today()
     state_file = _state_path(today)
     if not state_file.exists():
         return {"status": "no_queue", "date": today.isoformat()}
-
     with open(state_file) as f:
         payload = json.load(f)
     items = payload.get("items", [])
@@ -143,12 +153,62 @@ def send(today: Optional[date] = None) -> dict:
     perry_name = perry.get("name") or "Perry Patraszewski"
     perry_email = perry.get("email") or "perry@mom-wow.com"
 
+    results = _do_send(items, perry_name, perry_email)
+    sent_payload = {
+        "date": today.isoformat(),
+        "sent_at": datetime.utcnow().isoformat() + "Z",
+        "source": "cron",
+        "results": results,
+    }
+    with open(_sent_path(today), "w") as f:
+        json.dump(sent_payload, f, indent=2)
+    sent_count = sum(1 for r in results if r["sent"])
+    summary_html = _render_send_summary(results, today)
+    from tools.email_sender import send_report_email
+    send_report_email(
+        to_emails=[perry_email],
+        subject=f"MOM auto-send · {sent_count}/{len(results)} sent on {today.isoformat()}",
+        html_body=summary_html,
+    )
+    return {"status": "sent", "date": today.isoformat(), "sent": sent_count, "total": len(results)}
+
+
+def send_selected(items: list[dict], today: Optional[date] = None) -> dict:
+    """Send a caller-supplied list of items (used by the dashboard preview UI).
+
+    Same side effects as `send()`: stage→contacted, log note, record outcomes
+    in <date>.sent.json. Use this when the user has hand-picked which items
+    from the candidate list to actually fire.
+    """
+    today = today or date.today()
+    if not items:
+        return {"status": "empty", "date": today.isoformat()}
+
+    perry = get_rep_by_id(PERRY_REP_ID) or {}
+    perry_name = perry.get("name") or "Perry Patraszewski"
+    perry_email = perry.get("email") or "perry@mom-wow.com"
+
+    results = _do_send(items, perry_name, perry_email)
+    sent_payload = {
+        "date": today.isoformat(),
+        "sent_at": datetime.utcnow().isoformat() + "Z",
+        "source": "dashboard",
+        "results": results,
+    }
+    with open(_sent_path(today), "w") as f:
+        json.dump(sent_payload, f, indent=2)
+    sent_count = sum(1 for r in results if r["sent"])
+    return {"status": "sent", "date": today.isoformat(), "sent": sent_count, "total": len(results), "results": results}
+
+
+def _do_send(items: list[dict], perry_name: str, perry_email: str) -> list[dict]:
+    """Pure send loop: fire each email, advance HubSpot, return per-item results."""
     results = []
     for item in items:
         result = send_outreach_email(
             to_email=item["contact_email"],
             subject=item["subject"],
-            body_text=item["body"],
+            body_text=_with_portfolio_ps(item["body"]),
             from_email=perry_email,
             from_name=perry_name,
             reply_to=perry_email,
@@ -176,25 +236,7 @@ def send(today: Optional[date] = None) -> dict:
             "error": result.get("error"),
             "ts": datetime.utcnow().isoformat() + "Z",
         })
-
-    sent_payload = {
-        "date": today.isoformat(),
-        "sent_at": datetime.utcnow().isoformat() + "Z",
-        "results": results,
-    }
-    with open(_sent_path(today), "w") as f:
-        json.dump(sent_payload, f, indent=2)
-
-    sent_count = sum(1 for r in results if r["sent"])
-
-    summary_html = _render_send_summary(results, today)
-    from tools.email_sender import send_report_email
-    send_report_email(
-        to_emails=[perry_email],
-        subject=f"MOM auto-send · {sent_count}/{len(results)} sent on {today.isoformat()}",
-        html_body=summary_html,
-    )
-    return {"status": "sent", "date": today.isoformat(), "sent": sent_count, "total": len(results)}
+    return results
 
 
 def _render_preview(items: list[dict], today: date) -> str:

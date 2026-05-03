@@ -227,13 +227,20 @@ def sidebar():
 # ── Pipeline page ──────────────────────────────────────────────────────────────
 
 def page_pipeline():
-    title_col, btn_col = st.columns([4, 1])
+    title_col, batch_col, clean_col = st.columns([3, 1, 1])
     with title_col:
         st.title("📊 Pipeline")
         st.caption("Live data from HubSpot")
-    with btn_col:
+    with batch_col:
         st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
-        if st.button("🧹 Clean CRM", help="Find and remove junk + duplicate deals"):
+        if st.button("📨 Send my batch", help="Auto-send today's cold-email batch (preview first)", use_container_width=True):
+            with st.spinner("Building today's batch..."):
+                from agents.auto_send import _candidates_for_today
+                st.session_state["batch_items"] = _candidates_for_today()
+                st.session_state["batch_skip"] = set()
+    with clean_col:
+        st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+        if st.button("🧹 Clean CRM", help="Find and remove junk + duplicate deals", use_container_width=True):
             with st.spinner("Scanning HubSpot..."):
                 try:
                     from agents.cleanup import cleanup
@@ -247,6 +254,63 @@ def page_pipeline():
                         st.info("CRM is already clean ✨")
                 except Exception as e:
                     st.error(f"Error: {e}")
+
+    # ── Auto-send preview panel ──
+    if "batch_items" in st.session_state:
+        items = st.session_state["batch_items"]
+        skip = st.session_state.get("batch_skip", set())
+        with st.container(border=True):
+            if not items:
+                st.info("No uncontacted prospects with a ready cold email. Run discovery first.")
+            else:
+                included = [it for it in items if it["deal_id"] not in skip]
+                from config.settings import PORTFOLIO_URL
+                portfolio_note = (
+                    f"Portfolio P.S. **on** → {PORTFOLIO_URL}"
+                    if PORTFOLIO_URL else
+                    "Portfolio P.S. **off** (no `PORTFOLIO_URL` set yet — placeholder)."
+                )
+                st.markdown(f"### Preview · {len(included)} of {len(items)} ready to send")
+                st.caption(portfolio_note)
+                for it in items:
+                    deal_id = it["deal_id"]
+                    is_skipped = deal_id in skip
+                    cols = st.columns([6, 1])
+                    with cols[0]:
+                        with st.expander(f"{'❌ ' if is_skipped else '✓ '}{it['prospect_name']} → {it['contact_email']}"):
+                            st.markdown(f"**Subject:** {it['subject']}")
+                            st.markdown(it["body"].replace("\n", "  \n"))
+                            if PORTFOLIO_URL:
+                                st.caption(f"_(P.S. with portfolio link: {PORTFOLIO_URL})_")
+                    with cols[1]:
+                        label = "Include" if is_skipped else "Skip"
+                        if st.button(label, key=f"toggle_{deal_id}"):
+                            if is_skipped:
+                                skip.discard(deal_id)
+                            else:
+                                skip.add(deal_id)
+                            st.session_state["batch_skip"] = skip
+                            st.rerun()
+
+                send_col, cancel_col = st.columns([1, 1])
+                with send_col:
+                    if st.button(f"✉️ Send {len(included)} now", type="primary", disabled=not included, use_container_width=True):
+                        with st.spinner("Sending..."):
+                            from agents.auto_send import send_selected
+                            result = send_selected(included)
+                        st.success(f"Sent {result['sent']}/{result['total']}.")
+                        for r in result["results"]:
+                            if r["sent"]:
+                                st.markdown(f"- ✓ **{r['prospect_name']}** → {r['to']}")
+                            else:
+                                st.markdown(f"- ✗ **{r['prospect_name']}** → {r['to']} _({r.get('error')})_")
+                        del st.session_state["batch_items"]
+                        st.session_state.pop("batch_skip", None)
+                with cancel_col:
+                    if st.button("Cancel", use_container_width=True):
+                        del st.session_state["batch_items"]
+                        st.session_state.pop("batch_skip", None)
+                        st.rerun()
 
     try:
         from tools import hubspot_client as hs
