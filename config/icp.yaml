@@ -48,19 +48,21 @@ tiers:
 
 pipeline_stages:
   - id: prospect
-    label: Prospect
+    label: Spotted
   - id: contacted
-    label: Contacted
+    label: Outreach sent
   - id: replied
-    label: Replied
+    label: In conversation
   - id: tasting_booked
-    label: Tasting Booked
+    label: Tasting booked
+  - id: tasting_done
+    label: Tasting done
   - id: won
-    label: Won
+    label: Stocked
   - id: lost
-    label: Lost
+    label: Passed
   - id: nurture
-    label: Nurture
+    label: Resting
 
 follow_up_schedule:
   active_days: [3, 7, 14]

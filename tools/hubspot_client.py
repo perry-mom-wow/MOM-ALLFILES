@@ -39,7 +39,8 @@ STAGE_MAP_BY_PIPELINE = {
         "prospect":       "appointmentscheduled",
         "contacted":      "qualifiedtobuy",
         "replied":        "presentationscheduled",
-        "tasting_booked": "contractsent",
+        "tasting_booked": "decisionmakerboughtin",
+        "tasting_done":   "contractsent",
         "nurture":        "4961801429",
         "won":            "closedwon",
         "lost":           "closedlost",
@@ -50,6 +51,7 @@ STAGE_MAP_BY_PIPELINE = {
         "contacted":      "5143548139",
         "replied":        "5143548140",
         "tasting_booked": "5143548142",
+        "tasting_done":   "5143548142",  # Same ID for now; split in HubSpot UI if you want them distinct in Tier 2/3
         "nurture":        "5143548146",
         "won":            "5143548143",
         "lost":           "5143548144",

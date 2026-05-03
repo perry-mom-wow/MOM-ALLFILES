@@ -68,8 +68,8 @@ def run_daily(today: Optional[date] = None) -> dict:
         rep_id = props.get("hubspot_owner_id", "marcus")  # fallback
 
         # CRITICAL: never send follow-ups to anyone who has responded or is post-outreach
-        # "replied", "tasting_booked", "won", "lost" all mean a human is in conversation
-        if stage in ("won", "lost", "replied", "tasting_booked"):
+        # "replied", "tasting_booked", "tasting_done", "won", "lost" all mean a human is in conversation
+        if stage in ("won", "lost", "replied", "tasting_booked", "tasting_done"):
             skipped.append({"deal_id": deal_id, "reason": f"stage={stage} — human conversation active, no automated messages"})
             continue
 

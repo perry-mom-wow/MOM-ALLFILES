@@ -33,12 +33,13 @@ TIER_REVENUE = {
 
 # Inverse of HS_STAGE_MAP — translate HubSpot's stage IDs back to ours
 _HS_TO_OURS = {
-    "appointmentscheduled": "prospect",
-    "qualifiedtobuy":       "contacted",
-    "presentationscheduled": "replied",
-    "decisionmakerboughtin": "tasting_booked",
-    "closedwon":            "won",
-    "closedlost":           "lost",
+    "appointmentscheduled":  "prospect",        # Spotted
+    "qualifiedtobuy":        "contacted",       # Outreach sent
+    "presentationscheduled": "replied",         # In conversation
+    "decisionmakerboughtin": "tasting_booked",  # Tasting booked
+    "contractsent":          "tasting_done",    # Tasting done
+    "closedwon":             "won",             # Stocked
+    "closedlost":            "lost",            # Passed
 }
 
 
