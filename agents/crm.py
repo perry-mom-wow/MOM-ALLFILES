@@ -67,6 +67,10 @@ class DuplicateInCRM(Exception):
     """Raised when a deal for this venue already exists in HubSpot."""
 
 
+class ParentGroupConflict(Exception):
+    """Raised when the prospect belongs to a hospitality chain we already have a deal with."""
+
+
 def onboard_prospect(
     profile: ProspectProfile,
     sequence: OutreachSequence,
@@ -79,6 +83,27 @@ def onboard_prospect(
         raise DuplicateInCRM(
             f"'{profile.name}' is already in HubSpot (deal ID {existing['id']}). Skipping."
         )
+
+    # ── Parent-group conflict — does this venue belong to a chain we're already
+    # in conversation with? (e.g. Hotel Lisboa belongs to Pestana Group)
+    # Decentralized chains (Hyatt, Marriott, IHG, Hilton…) are detected for vocabulary
+    # purposes but NOT blocked, since each property has its own buying authority.
+    from tools.parent_groups import match_parent_group, find_existing_group_deal
+    group = match_parent_group(
+        name=profile.name,
+        website=profile.website,
+        description=profile.description,
+        contact_title=profile.contact_title,
+    )
+    if group and not group.get("decentralized", False):
+        existing_group_deal = find_existing_group_deal(group["name"])
+        if existing_group_deal:
+            existing_name = existing_group_deal["properties"].get("dealname", "?")
+            raise ParentGroupConflict(
+                f"'{profile.name}' belongs to {group['name']}, which already has an "
+                f"active deal in HubSpot: '{existing_name}' (id {existing_group_deal['id']}). "
+                f"Skipping to avoid cross-contacting the same parent account."
+            )
 
     # ── Final gatekeeper check ──────────────────────────────────────────────
     from agents.gatekeeper import validate_prospect

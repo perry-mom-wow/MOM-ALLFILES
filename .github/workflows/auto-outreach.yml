@@ -1,0 +1,76 @@
+name: auto-outreach
+
+# Two scheduled jobs:
+#   prepare — picks tomorrow's 30 prospects, commits queue file, emails preview to Perry.
+#             Runs daily at 17:00 UTC (= 18:00 Lisbon BST / 17:00 GMT) so Perry sees it before EOD.
+#   send    — sends the queued emails the next morning at 08:00 UTC (= 09:00 Lisbon BST / 08:00 GMT).
+#
+# Between prepare and send, Perry can edit data/auto_send/<date>.json directly in the GitHub
+# UI to remove or modify entries — the send job uses whatever is committed at trigger time.
+# To halt completely, disable this workflow on github.com.
+
+on:
+  schedule:
+    - cron: "0 17 * * *"   # prepare — 17:00 UTC daily
+    - cron: "0 8 * * *"    # send    — 08:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Manual run: 'prepare' or 'send'"
+        required: true
+        default: "prepare"
+        type: choice
+        options:
+          - prepare
+          - send
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Decide action
+        id: pick
+        run: |
+          if [ -n "${{ github.event.inputs.action }}" ]; then
+            echo "action=${{ github.event.inputs.action }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.schedule }}" = "0 17 * * *" ]; then
+            echo "action=prepare" >> $GITHUB_OUTPUT
+          else
+            echo "action=send" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run auto-send
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HUBSPOT_API_KEY: ${{ secrets.HUBSPOT_API_KEY }}
+          HUBSPOT_PIPELINE_ID: ${{ secrets.HUBSPOT_PIPELINE_ID }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          REPORT_FROM_EMAIL: perry@mom-wow.com
+          REPORT_RECIPIENTS: perry@mom-wow.com
+          AUTO_EMAIL_ENABLED: "true"
+        run: python -m agents.auto_send ${{ steps.pick.outputs.action }}
+
+      - name: Commit state changes
+        run: |
+          git config user.name "mom-auto-send"
+          git config user.email "auto-send@mom-wow.com"
+          git add data/auto_send/ || true
+          if ! git diff --cached --quiet; then
+            git commit -m "auto-send: ${{ steps.pick.outputs.action }} $(date -u +%Y-%m-%d)"
+            git push
+          else
+            echo "No state changes to commit."
+          fi

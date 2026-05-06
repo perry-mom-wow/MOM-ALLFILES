@@ -1,0 +1,102 @@
+# Parent hospitality groups that own multiple venues.
+#
+# When the discovery agent finds a new prospect (venue, hotel, restaurant), the
+# dedup check will flag it if its name, website domain, description, or contact
+# title matches any of these groups — AND a deal for that group already exists
+# in HubSpot. This stops us from cold-contacting Pestana properties when we're
+# already in conversation with Pestana Group, etc.
+#
+# How matching works:
+#   - `aliases`: substrings checked (case-insensitive) against name + description + contact_title
+#   - `domains`: domain suffixes checked against the venue website (e.g. "pestana.com" matches
+#     "pestana.com", "www.pestana.com", "guincho.pestana.com")
+#   - `decentralized: true`: this group is detected for vocabulary/contact-verification
+#     purposes but the dedup rule does NOT block new properties under it. Use this for
+#     franchise/license federations where each property has its own GM, F&B director,
+#     and buying authority (Hyatt, Marriott, IHG, Hilton, Accor, etc.). Default is false
+#     (centralized = block on conflict).
+#
+# Add new chains by appending to this list. Order doesn't matter.
+
+parent_groups:
+  - name: Pestana Hotel Group
+    aliases: [pestana, "pestana group", "pestana hotel", "pestana hotels"]
+    domains: [pestana.com, pestanacollection.com, pousadas.pt]
+
+  - name: Vila Galé
+    aliases: ["vila galé", "vila gale"]
+    domains: [vilagale.com]
+
+  - name: Tivoli Hotels & Resorts
+    aliases: ["tivoli hotels", "tivoli resorts", "tivoli marina"]
+    domains: [tivolihotels.com]
+
+  - name: SANA Hotels
+    aliases: ["sana hotels", "sana lisboa", "sana malhoa", "sana metropolitan"]
+    domains: [sanahotels.com]
+
+  - name: VIP Executive Hotels
+    aliases: ["vip hotels", "vip executive"]
+    domains: [viphotels.com]
+
+  - name: Onyria Group
+    aliases: [onyria, "onyria group", "onyria quinta da marinha"]
+    domains: [onyriagroup.com, onyria.com]
+
+  - name: Discovery Hotels & Resorts
+    aliases: ["discovery hotels", "discovery resorts"]
+    domains: [discoveryhotelsmanagement.com]
+
+  - name: Lisbon Heritage Hotels
+    aliases: ["lisbon heritage", "heritage lisbon"]
+    domains: [heritage.pt, lisbonheritagehotels.com]
+
+  - name: Minor Hotels
+    aliases: ["minor hotels", "anantara", "tivoli (minor)"]
+    domains: [minorhotels.com, anantara.com]
+    decentralized: true
+
+  - name: Marriott International
+    aliases: [marriott, "courtyard by marriott", "ritz-carlton", ritz carlton, sheraton, "w hotel", westin]
+    domains: [marriott.com, ritzcarlton.com, sheraton.com, westin.com]
+    decentralized: true
+
+  - name: Accor
+    aliases: [accor, accorhotels, sofitel, novotel, ibis, mercure, "pullman hotel", "raffles", fairmont]
+    domains: [accor.com, accorhotels.com, sofitel.com, novotel.com, ibis.com, mercure.com, pullmanhotels.com]
+    decentralized: true
+
+  - name: IHG (InterContinental Hotels Group)
+    aliases: ["intercontinental", "intercontinental hotel", "holiday inn", "crowne plaza", kimpton, "hotel indigo"]
+    domains: [ihg.com, intercontinental.com, holidayinn.com, crowneplaza.com, kimptonhotels.com]
+    decentralized: true
+
+  - name: Hilton
+    aliases: [hilton, "doubletree", "hampton inn", "waldorf astoria", conrad, "canopy by hilton"]
+    domains: [hilton.com, doubletree.com, hamptoninn.com, waldorfastoria.com]
+    decentralized: true
+
+  - name: Hyatt
+    aliases: [hyatt, "park hyatt", "grand hyatt", "andaz"]
+    domains: [hyatt.com, andaz.com]
+    decentralized: true
+
+  - name: Meliá Hotels
+    aliases: ["meliá hotels", "melia hotels", "melia ", "tryp by wyndham", "innside by melia"]
+    domains: [melia.com, melia-hotels.com]
+    decentralized: true
+
+  - name: NH Hotel Group
+    aliases: ["nh hotels", "nh collection", "nhow"]
+    domains: [nh-hotels.com, nhcollection.com, nhow-hotels.com]
+    decentralized: true
+
+  - name: Radisson Hotel Group
+    aliases: [radisson, "radisson blu", "radisson collection", "park inn"]
+    domains: [radissonhotels.com, radissonblu.com, parkinn.com]
+    decentralized: true
+
+  - name: Four Seasons
+    aliases: ["four seasons"]
+    domains: [fourseasons.com]
+    decentralized: true

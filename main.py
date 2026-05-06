@@ -87,12 +87,14 @@ def cmd_discover(args):
             sequence = generate_sequence(profile, rep_id)
 
             print(f"    ✓ Onboarding to HubSpot...")
-            from agents.crm import onboard_prospect, GatekeeperRejection, DuplicateInCRM
+            from agents.crm import onboard_prospect, GatekeeperRejection, DuplicateInCRM, ParentGroupConflict
             try:
                 result = onboard_prospect(profile, sequence, rep_id)
                 print(f"    ✅ Done — Deal ID {result['deal_id']} | €{result['revenue_potential_eur']}/mo | Next follow-up: {result['next_followup']}\n")
             except DuplicateInCRM as dup:
                 print(f"    🔄 {dup}\n")
+            except ParentGroupConflict as pg:
+                print(f"    🏨 {pg}\n")
             except GatekeeperRejection as gk:
                 print(f"    🚫 {gk}\n")
 

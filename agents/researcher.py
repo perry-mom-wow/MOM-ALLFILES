@@ -178,6 +178,21 @@ Gathered information:
         contact_title = decision_maker.get("position") or contact_title
         contact_linkedin = decision_maker.get("linkedin") or contact_linkedin
 
+    # ── Contact-venue employer mismatch check ────────────────────────────────
+    # If the contact's title cites a hospitality chain that doesn't match this
+    # venue's parent group, drop the contact rather than reach out to the wrong
+    # person. The venue still proceeds — just with venue-only outreach.
+    # (Catches cases like Paulo Bicho's "F&B Director @ Hyatt Regency Vilamoura"
+    # being assigned to "Hotel Dom Pedro Lisboa".)
+    if contact_name or contact_title:
+        from tools.parent_groups import verify_contact_for_venue
+        ok, reason = verify_contact_for_venue(raw.name, contact_title)
+        if not ok:
+            print(f"      ⚠️  Dropping contact for '{raw.name}': {reason}")
+            contact_name = None
+            contact_title = None
+            contact_linkedin = None
+
     return ProspectProfile(
         name=raw.name,
         venue_type=raw.venue_type,

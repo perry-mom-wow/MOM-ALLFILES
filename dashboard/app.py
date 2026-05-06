@@ -10,9 +10,25 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import json
-from datetime import date
+from datetime import date, datetime
 
 import streamlit as st
+
+
+def _format_eu_date(raw) -> str:
+    """Format an ISO date/datetime string as DD.MM.YYYY for display.
+
+    Accepts: '2026-05-01', '2026-05-01T10:08:08.094Z', None, or empty string.
+    Returns: '01.05.2026', or '' if input is missing/unparseable.
+    """
+    if not raw:
+        return ""
+    s = str(raw)[:10]  # take just the date portion
+    try:
+        d = datetime.strptime(s, "%Y-%m-%d").date()
+        return d.strftime("%d.%m.%Y")
+    except Exception:
+        return s
 import plotly.graph_objects as go
 
 from config.settings import load_reps, save_reps, load_icp
@@ -326,21 +342,49 @@ def page_pipeline():
     import pandas as pd
     from agents.reporter import _HS_TO_OURS
     import re
+
+    # Resolve HubSpot owner IDs → human names once per session (10-min TTL).
+    @st.cache_data(ttl=600, show_spinner=False)
+    def _owner_map() -> dict[str, str]:
+        try:
+            return hs.get_owners()
+        except Exception:
+            return {}
+    owners = _owner_map()
+
+    # rep_id ("perry_patraszewski") → first name ("Perry"), built from reps.yaml.
+    rep_first_name = {r["id"]: (r.get("name") or r["id"]).split()[0].capitalize()
+                      for r in load_reps()}
+
+    def _first_name(s: str) -> str:
+        """Take the first whitespace-separated token and capitalize it."""
+        if not s:
+            return ""
+        return s.strip().split()[0].capitalize()
+
     rows = []
     for d in deals:
         props = d.get("properties", {})
         hs_stage = (props.get("dealstage") or "").lower()
         our_stage = _HS_TO_OURS.get(hs_stage, hs_stage)
         deal_name = props.get("dealname", "")
-        # Rep ID is encoded as "[rep_id]" suffix in the deal name during onboarding.
+        # Rep priority: [rep_id] suffix in deal name → HubSpot owner name → raw owner ID.
         rep_match = re.search(r"\[([^\]]+)\]\s*$", deal_name)
-        rep = rep_match.group(1) if rep_match else (props.get("hubspot_owner_id") or "")
+        owner_id = (props.get("hubspot_owner_id") or "").strip()
+        if rep_match:
+            rid = rep_match.group(1).strip()
+            # Prefer the rep's display name from reps.yaml; otherwise capitalize the id's first token.
+            rep = rep_first_name.get(rid) or _first_name(rid.replace("_", " "))
+        elif owner_id and owner_id in owners:
+            rep = _first_name(owners[owner_id])
+        else:
+            rep = owner_id
         rows.append({
             "Deal": deal_name,
             "Stage": STAGE_LABELS.get(our_stage, our_stage),
             "Value (€/mo)": float(props.get("amount") or 0),
             "Rep": rep,
-            "Next Follow-up": (props.get("closedate") or "")[:10],
+            "Next Follow-up": _format_eu_date(props.get("closedate")),
         })
     df = pd.DataFrame(rows)
 
@@ -443,7 +487,7 @@ def page_queue():
         meta_parts.append(contact_title)
     src_date = item.get("_source_date")
     if src_date and src_date != today_iso:
-        meta_parts.append(f"queued {src_date}")
+        meta_parts.append(f"queued {_format_eu_date(src_date)}")
     st.caption("  ·  ".join(meta_parts))
 
     # Contact links

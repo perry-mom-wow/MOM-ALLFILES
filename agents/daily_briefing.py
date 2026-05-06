@@ -62,7 +62,7 @@ def run_morning_briefing(today: Optional[date] = None) -> dict:
                 from agents.discovery import discover_prospects
                 from agents.researcher import research_prospect
                 from agents.writer import generate_sequence
-                from agents.crm import onboard_prospect, GatekeeperRejection, DuplicateInCRM
+                from agents.crm import onboard_prospect, GatekeeperRejection, DuplicateInCRM, ParentGroupConflict
 
                 prospects = discover_prospects(
                     location=job["location"],
@@ -75,7 +75,7 @@ def run_morning_briefing(today: Optional[date] = None) -> dict:
                         sequence = generate_sequence(profile, rep_id)
                         onboard_prospect(profile, sequence, rep_id)
                         summary["deals_created"] += 1
-                    except (GatekeeperRejection, DuplicateInCRM):
+                    except (GatekeeperRejection, DuplicateInCRM, ParentGroupConflict):
                         pass  # silently skip — expected
                     except Exception as e:
                         print(f"      ⚠️  {raw.name}: {e}")

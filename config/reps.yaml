@@ -1,28 +1,4 @@
 reps:
-- active: false
-  email: marcus@mom-wow.com
-  id: marcus
-  linkedin_url: ''
-  name: Marcus
-  sample_messages:
-  - Hi Perry See attached.
-  - I have listed some objectives for the week and ill update this in the next few
-    dats for month targets.
-  - AT the bottom is a list of some information / access requests just as a reminder
-    for you.
-  - Have a good evening.
-  - Hi Nina.
-  - Thanks for the information pack.
-  - As Perry said we have the VW camper that he could bring into the space. This will
-    be more on brand for MoM.
-  - This would be the ideal way of participating in the event. So it would be great
-    to know if this was feasible first.
-  - Can you let me know what’s possible on price for attending in this way.
-  - Best
-  - Marcus
-  title: Sales Executive, MOM
-  tone_notes: Direct, confident, sporty vibe. Gets to the point quickly. Loves sport
-    and wellness.
 - active: true
   email: laura@mom-wow.com
   id: laura

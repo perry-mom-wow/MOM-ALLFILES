@@ -5,9 +5,8 @@ import yaml
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).parent.parent
+load_dotenv(BASE_DIR / ".env", override=True)  # .env wins over shell env (Claude Desktop sets ANTHROPIC_API_KEY="" at shell level)
 CONFIG_DIR = BASE_DIR / "config"
 
 

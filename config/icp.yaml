@@ -63,6 +63,8 @@ pipeline_stages:
     label: Passed
   - id: nurture
     label: Resting
+  - id: active_client
+    label: Active client
 
 follow_up_schedule:
   active_days: [3, 7, 14]

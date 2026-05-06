@@ -31,8 +31,11 @@ TIER_REVENUE = {
 }
 
 
-# Inverse of HS_STAGE_MAP — translate HubSpot's stage IDs back to ours
+# Inverse of HS_STAGE_MAP — translate HubSpot's stage IDs back to ours.
+# Covers both built-in HubSpot stage IDs (appointmentscheduled, etc.) and the
+# numeric IDs HubSpot generates for custom stages in the Tier 1 + Tier 2/3 pipelines.
 _HS_TO_OURS = {
+    # Tier 1 pipeline (HubSpot's "default" pipeline shell)
     "appointmentscheduled":  "prospect",        # Spotted
     "qualifiedtobuy":        "contacted",       # Outreach sent
     "presentationscheduled": "replied",         # In conversation
@@ -40,6 +43,17 @@ _HS_TO_OURS = {
     "contractsent":          "tasting_done",    # Tasting done
     "closedwon":             "won",             # Stocked
     "closedlost":            "lost",            # Passed
+    "4961801429":            "nurture",         # Resting (Tier 1 custom)
+    "4961801428":            "active_client",   # Active client (Tier 1 custom)
+    # Tier 2/3 pipeline (3713146104) — every stage has a custom numeric ID
+    "5143548138":            "prospect",
+    "5143548139":            "contacted",
+    "5143548140":            "replied",
+    "5143548142":            "tasting_booked",  # Same ID currently doubles as tasting_done
+    "5143548146":            "nurture",
+    "5143548143":            "won",
+    "5143548144":            "lost",
+    "5143548145":            "active_client",
 }
 
 

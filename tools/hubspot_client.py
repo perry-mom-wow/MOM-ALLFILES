@@ -281,6 +281,15 @@ def get_deal_associations(deal_id: str) -> dict:
     return out
 
 
+def update_deal_owner(deal_id: str, new_owner_id: str) -> None:
+    """Reassign a deal to a different HubSpot owner."""
+    client = _get_client()
+    client.crm.deals.basic_api.update(
+        deal_id=deal_id,
+        simple_public_object_input={"properties": {"hubspot_owner_id": str(new_owner_id)}},
+    )
+
+
 def update_deal_stage(deal_id: str, stage: str) -> None:
     """Update a deal's stage. Looks up the deal's pipeline first so we pick the right stage ID."""
     client = _get_client()
@@ -332,6 +341,40 @@ def log_note(contact_id: Optional[str], deal_id: str, body: str) -> None:
 
 
 # ── Reporting queries ──────────────────────────────────────────────────────────
+
+def get_owners() -> dict[str, str]:
+    """Return a {owner_id: display_name} map of all HubSpot owners (active + archived).
+
+    Includes archived owners so legacy deals owned by ex-employees still resolve to a
+    name instead of a raw ID. Falls back to email if name fields are missing. Returns
+    empty dict on auth/API failure so callers can degrade gracefully to raw IDs.
+    """
+    client = _get_client()
+    out: dict[str, str] = {}
+
+    def _fetch(archived: bool) -> None:
+        after = None
+        while True:
+            kwargs: dict = {"limit": 100, "archived": archived}
+            if after:
+                kwargs["after"] = after
+            try:
+                page = client.crm.owners.owners_api.get_page(**kwargs)
+            except Exception:
+                return
+            for o in page.results:
+                first = (o.first_name or "").strip()
+                last = (o.last_name or "").strip()
+                name = (first + " " + last).strip() or (o.email or "").strip() or str(o.id)
+                out[str(o.id)] = name
+            if not page.paging or not page.paging.next:
+                return
+            after = page.paging.next.after
+
+    _fetch(archived=False)
+    _fetch(archived=True)
+    return out
+
 
 def get_all_deals() -> list[dict]:
     """Fetch all deals with key properties."""

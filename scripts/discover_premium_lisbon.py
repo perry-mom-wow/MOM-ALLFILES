@@ -18,7 +18,7 @@ load_dotenv(ROOT / ".env", override=True)
 from agents.discovery import discover_prospects  # noqa: E402
 from agents.researcher import research_prospect  # noqa: E402
 from agents.writer import generate_sequence  # noqa: E402
-from agents.crm import onboard_prospect, GatekeeperRejection, DuplicateInCRM  # noqa: E402
+from agents.crm import onboard_prospect, GatekeeperRejection, DuplicateInCRM, ParentGroupConflict  # noqa: E402
 
 
 LOCATION = "Lisboa, Portugal"
@@ -94,6 +94,9 @@ def main() -> None:
             except DuplicateInCRM as dup:
                 summary["duplicates"] += 1
                 print(f"    🔄 Duplicate: {dup}")
+            except ParentGroupConflict as pg:
+                summary["duplicates"] = summary.get("duplicates", 0) + 1
+                print(f"    🏨 Parent-group conflict: {pg}")
             except GatekeeperRejection as gk:
                 summary["rejected"] += 1
                 print(f"    🚫 Rejected: {gk}")
