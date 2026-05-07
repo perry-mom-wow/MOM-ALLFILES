@@ -561,6 +561,48 @@ def page_queue():
         "✏️ Update contact info"
     )
     with st.expander(expander_label, expanded=bool(missing_labels)):
+        # ── Apply pending auto-find results BEFORE rendering the inputs so
+        # st.session_state[<input_key>] is set in time for Streamlit to use it
+        # as the input value on this render. ──
+        autofind_pending_key = f"_autofind_pending_{deal_id}_{idx}"
+        if autofind_pending_key in st.session_state:
+            found = st.session_state.pop(autofind_pending_key)
+            if found.get("linkedin_url"):
+                st.session_state[f"li_{deal_id}_{idx}"] = found["linkedin_url"]
+            if found.get("email"):
+                st.session_state[f"em_{deal_id}_{idx}"] = found["email"]
+            if found.get("phone"):
+                st.session_state[f"ph_{deal_id}_{idx}"] = found["phone"]
+            if found.get("instagram_handle"):
+                st.session_state[f"ig_{deal_id}_{idx}"] = found["instagram_handle"]
+
+        af_col, _ = st.columns([1.5, 4])
+        if af_col.button(
+            "🔎 Auto-find",
+            key=f"autofind_{deal_id}_{idx}",
+            help="Run a web search and pre-fill any missing fields. You can still edit before saving.",
+            use_container_width=True,
+        ):
+            from tools.contact_finder import auto_find_contacts
+            with st.spinner(f"Searching for {venue}..."):
+                try:
+                    found = auto_find_contacts(venue, address)
+                    found_dict = found.to_dict()
+                except Exception as e:
+                    found_dict = {}
+                    st.error(f"Auto-find failed: {e}")
+            actionable = {
+                k: v for k, v in found_dict.items()
+                if k in ("email", "linkedin_url", "phone", "instagram_handle") and v
+            }
+            if actionable:
+                st.session_state[autofind_pending_key] = actionable
+                pretty = ", ".join(actionable.keys())
+                st.toast(f"Auto-find filled: {pretty}", icon="✅")
+                st.rerun()
+            else:
+                st.warning("Auto-find found nothing. Try the 🔍 search buttons above.")
+
         edit_cols = st.columns(2)
         with edit_cols[0]:
             new_linkedin = st.text_input(
