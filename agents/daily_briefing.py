@@ -22,14 +22,13 @@ ICP = load_icp()
 
 # ── Default daily discovery plan ────────────────────────────────────────────────
 # Each weekday morning, agent runs these discovery jobs.
-# Tune these per your sales priorities.
+# Solo operation: Perry owns all tiers (Marcus 2026-05-03, Laura 2026-05-07).
+# Tune these per current sales priorities.
 DAILY_PLAN = {
-    "marcus": [
+    "perry_patraszewski": [
         {"location": "Lisboa", "types": ["restaurant"], "max_per": 3},
         {"location": "Lisboa", "types": ["beach_club"], "max_per": 2},
-    ],
-    "laura": [
-        {"location": "Lisboa", "types": ["hotel"], "max_per": 3},
+        {"location": "Lisboa", "types": ["hotel"], "max_per": 2},
         {"location": "Lisboa", "types": ["wellness_center", "spa"], "max_per": 2},
     ],
 }
