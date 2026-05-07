@@ -320,6 +320,93 @@ Generate the full outreach sequence. Respond with JSON in this exact format:
     )
 
 
+# ── Inbound response drafter ──────────────────────────────────────────────────
+# When a prospect reaches out to us first (forwarded email, WhatsApp, IG DM),
+# the cold-pitch email_opener is the wrong tone. Use this instead to draft a
+# warm, on-point response that addresses their specific intent.
+
+INBOUND_SYSTEM_PROMPT = f"""\
+You are drafting a response to an inbound message a prospect just sent to MOM, the Longevity Alchemists.
+
+{BRAND_CONTEXT}
+
+CRITICAL RULES FOR INBOUND RESPONSES:
+- They wrote first. Acknowledge their message warmly in the first line.
+- Address their specific ask directly. If they want a price list, say you'll send it. If they want a tasting, propose two slots. If they want a partnership, ask one clarifying question.
+- DO NOT pitch the product as if cold. They already opted in by writing.
+- Keep it short. 60-120 words for the body. Long enough to answer, short enough to not feel like a sales push.
+- Match the rep's voice and signature style.
+- One clear next step at the end (a question, a proposed slot, or "I'll send X by Y").
+
+PUNCTUATION:
+- NEVER use em dashes (—) or en dashes (–). Comma, full stop, or "and".
+- NEVER use double hyphens (--).
+- Avoid AI tells: "I hope this finds you well", "circle back", "leverage", "synergy".
+
+Respond ONLY with valid JSON in this shape:
+{{
+  "subject": "string (subject line if email; can be empty for chat replies)",
+  "body": "string (the actual reply)"
+}}
+"""
+
+
+def generate_inbound_response(
+    *,
+    venue_name: str,
+    intent: str,
+    inbound_message: str,
+    contact_name: Optional[str],
+    rep_id: str,
+    venue_type: Optional[str] = None,
+) -> dict:
+    """Generate a tailored response to an inbound message.
+
+    Returns {'subject': str, 'body': str}. Uses prompt caching on the system
+    prompt + brand context.
+    """
+    rep = get_rep_by_id(rep_id)
+    if not rep:
+        raise ValueError(f"Rep '{rep_id}' not found in reps.yaml")
+
+    rep_context = _build_rep_context(rep)
+
+    user_content = f"""\
+{rep_context}
+
+INBOUND MESSAGE FROM {contact_name or 'the prospect'} at {venue_name}{f' ({venue_type})' if venue_type else ''}:
+\"\"\"
+{inbound_message}
+\"\"\"
+
+THEIR INTENT: {intent}
+
+Draft a warm, direct response. Address their specific ask. Keep it 60-120 words for the body. Output JSON only.
+"""
+
+    response = _get_client().messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=600,
+        system=[{
+            "type": "text",
+            "text": INBOUND_SYSTEM_PROMPT,
+            "cache_control": {"type": "ephemeral"},
+        }],
+        messages=[{"role": "user", "content": user_content}],
+    )
+
+    raw = response.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```", 2)[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    data = json.loads(raw)
+    return {
+        "subject": str(data.get("subject") or "").strip(),
+        "body": str(data.get("body") or "").strip(),
+    }
+
+
 # ── EA voice validation pass-through ──────────────────────────────────────────
 # Used by the EA drafter (brain/drafter.py). For B2B rep sequences (above)
 # voice rules differ per rep, so we don't run the validator on them.

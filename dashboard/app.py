@@ -225,7 +225,7 @@ def sidebar():
 
     page = st.sidebar.radio(
         "Navigate",
-        ["Pipeline", "Daily Queue", "Run Agent", "Team", "Reports"],
+        ["Pipeline", "Daily Queue", "Inbound", "Run Agent", "Team", "Reports"],
         label_visibility="collapsed",
     )
 
@@ -976,6 +976,244 @@ def page_reports():
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+def page_inbound():
+    """Capture an inbound lead via paste-in text or screenshot upload.
+
+    Flow: input → extract via Claude → editable preview + draft response
+    → 'Add to Pipeline' → HubSpot deal at stage='replied' + queued response.
+    """
+    st.title("📥 Inbound Lead Capture")
+    st.caption(
+        "Forward an email, paste a WhatsApp/IG message, or drop a screenshot. "
+        "I'll extract the lead, draft a response, and put it in the pipeline at "
+        "the 'In conversation' stage."
+    )
+
+    rep_id = st.session_state.get("active_rep_id", "perry_patraszewski")
+
+    tab_text, tab_image = st.tabs(["📝 Paste text", "🖼  Upload screenshot"])
+
+    extracted_key = "inbound_extracted_lead"  # ExtractedLead dict
+    response_key = "inbound_response_draft"    # {subject, body}
+
+    # ── Input tabs ────────────────────────────────────────────────────────────
+    with tab_text:
+        raw_text = st.text_area(
+            "Forwarded message",
+            placeholder="Paste the full email, WhatsApp message, IG DM, or SMS here. Headers and quoted threads are fine — I'll clean them.",
+            height=240,
+            key="inbound_raw_text",
+        )
+        if st.button("🧠 Extract", type="primary", disabled=not raw_text.strip(), key="extract_text"):
+            with st.spinner("Reading the message..."):
+                from brain.inbound_extractor import extract_from_text
+                lead = extract_from_text(raw_text)
+                st.session_state[extracted_key] = lead.to_dict()
+                st.session_state.pop(response_key, None)
+                st.rerun()
+
+    with tab_image:
+        upload = st.file_uploader(
+            "Drop a screenshot",
+            type=["png", "jpg", "jpeg", "webp", "gif"],
+            key="inbound_upload",
+        )
+        if upload is not None:
+            st.image(upload, caption=upload.name, use_container_width=True)
+            if st.button("🧠 Extract from image", type="primary", key="extract_image"):
+                with st.spinner("Reading the screenshot..."):
+                    from brain.inbound_extractor import extract_from_image
+                    media_type = upload.type or "image/png"
+                    lead = extract_from_image(upload.read(), media_type=media_type)
+                    st.session_state[extracted_key] = lead.to_dict()
+                    st.session_state.pop(response_key, None)
+                    st.rerun()
+
+    # ── Preview / edit / commit ──────────────────────────────────────────────
+    lead_dict = st.session_state.get(extracted_key)
+    if not lead_dict:
+        return
+
+    st.divider()
+    st.subheader("📋 Extracted lead — review and edit before committing")
+
+    if not lead_dict.get("is_lead"):
+        st.error(
+            f"This doesn't look like a real inbound lead.\n\n"
+            f"**Reason:** {lead_dict.get('reasoning', 'unspecified')}"
+        )
+        if st.button("🗑  Discard", key="discard_extract"):
+            st.session_state.pop(extracted_key, None)
+            st.session_state.pop(response_key, None)
+            st.rerun()
+        return
+
+    confidence = lead_dict.get("confidence") or 0.0
+    if confidence < 0.6:
+        st.warning(
+            f"Low confidence ({confidence:.2f}) — the model wasn't sure about the venue. "
+            "Double-check the venue name and intent below."
+        )
+    else:
+        st.success(f"Confidence: {confidence:.2f} · {lead_dict.get('reasoning', '')}")
+
+    # Editable form for the extracted fields.
+    with st.form("inbound_edit_form", border=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            venue_name = st.text_input("Venue name *", value=lead_dict.get("venue_name") or "")
+            contact_name = st.text_input("Contact name", value=lead_dict.get("contact_name") or "")
+            contact_title = st.text_input("Contact title", value=lead_dict.get("contact_title") or "")
+            email = st.text_input("Email", value=lead_dict.get("email") or "")
+            phone = st.text_input("Phone", value=lead_dict.get("phone") or "")
+        with c2:
+            website = st.text_input("Website", value=lead_dict.get("website") or "")
+            address = st.text_input("Address / city", value=lead_dict.get("address") or "")
+            linkedin_url = st.text_input("LinkedIn URL", value=lead_dict.get("linkedin_url") or "")
+            instagram_handle = st.text_input(
+                "Instagram handle (no @)",
+                value=(lead_dict.get("instagram_handle") or "").lstrip("@"),
+            )
+            venue_type = st.selectbox(
+                "Venue type",
+                ["restaurant", "hotel", "cafe", "beach_club", "spa",
+                 "wellness_center", "gym", "event_company", "other"],
+                index=(["restaurant", "hotel", "cafe", "beach_club", "spa",
+                        "wellness_center", "gym", "event_company", "other"]
+                       .index(lead_dict.get("venue_type") or "other")),
+            )
+            tier = st.selectbox(
+                "Tier (drives revenue estimate)",
+                [1, 2, 3],
+                index=1,
+                help="Tier 1 = €1K/mo · Tier 2 = €750/mo · Tier 3 = €300/mo",
+            )
+
+        intent = st.text_input(
+            "What they want (intent)",
+            value=lead_dict.get("intent") or "",
+        )
+        inbound_message = st.text_area(
+            "The message they sent (will be logged as a HubSpot note)",
+            value=lead_dict.get("inbound_message") or "",
+            height=150,
+        )
+
+        submit_edit = st.form_submit_button("💾 Save edits", use_container_width=True)
+        if submit_edit:
+            lead_dict.update({
+                "venue_name": venue_name, "contact_name": contact_name or None,
+                "contact_title": contact_title or None, "email": email or None,
+                "phone": phone or None, "website": website or None,
+                "address": address or None, "linkedin_url": linkedin_url or None,
+                "instagram_handle": instagram_handle or None,
+                "venue_type": venue_type, "intent": intent,
+                "inbound_message": inbound_message,
+            })
+            st.session_state[extracted_key] = lead_dict
+            st.session_state["inbound_tier"] = tier
+            st.session_state.pop(response_key, None)
+            st.toast("Edits saved.", icon="💾")
+            st.rerun()
+
+    st.session_state.setdefault("inbound_tier", 2)
+
+    # ── Response draft ────────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("✍️  Response draft")
+
+    if response_key not in st.session_state:
+        if st.button("🪄 Generate response draft", type="secondary", key="gen_draft"):
+            with st.spinner("Drafting response..."):
+                try:
+                    from agents.writer import generate_inbound_response
+                    draft = generate_inbound_response(
+                        venue_name=lead_dict["venue_name"],
+                        intent=lead_dict.get("intent") or "",
+                        inbound_message=lead_dict.get("inbound_message") or "",
+                        contact_name=lead_dict.get("contact_name"),
+                        rep_id=rep_id,
+                        venue_type=lead_dict.get("venue_type"),
+                    )
+                    st.session_state[response_key] = draft
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Draft generation failed: {e}")
+    else:
+        draft = st.session_state[response_key]
+        with st.form("inbound_draft_form", border=True):
+            new_subject = st.text_input("Subject", value=draft.get("subject", ""))
+            new_body = st.text_area("Body", value=draft.get("body", ""), height=240)
+            cols = st.columns([1, 1, 2])
+            regenerate = cols[0].form_submit_button("🪄 Regenerate")
+            save_draft = cols[1].form_submit_button("💾 Save edits", type="primary")
+            if regenerate:
+                st.session_state.pop(response_key, None)
+                st.rerun()
+            if save_draft:
+                st.session_state[response_key] = {"subject": new_subject, "body": new_body}
+                st.toast("Draft saved.", icon="✏️")
+
+    # ── Commit ───────────────────────────────────────────────────────────────
+    st.divider()
+    commit_col, discard_col = st.columns([2, 1])
+
+    can_commit = bool(lead_dict.get("venue_name"))
+    commit_label = "📨 Add to Pipeline" + (" + queue draft" if response_key in st.session_state else "")
+    if commit_col.button(commit_label, type="primary", disabled=not can_commit, use_container_width=True):
+        with st.spinner("Onboarding inbound lead..."):
+            try:
+                from brain.inbound_extractor import ExtractedLead
+                from agents.inbound import onboard_inbound
+
+                lead_obj = ExtractedLead(
+                    is_lead=True,
+                    venue_name=lead_dict["venue_name"],
+                    contact_name=lead_dict.get("contact_name"),
+                    contact_title=lead_dict.get("contact_title"),
+                    email=lead_dict.get("email"),
+                    phone=lead_dict.get("phone"),
+                    linkedin_url=lead_dict.get("linkedin_url"),
+                    instagram_handle=lead_dict.get("instagram_handle"),
+                    website=lead_dict.get("website"),
+                    address=lead_dict.get("address"),
+                    intent=lead_dict.get("intent") or "",
+                    inbound_message=lead_dict.get("inbound_message") or "",
+                    confidence=float(lead_dict.get("confidence") or 0.5),
+                    reasoning=lead_dict.get("reasoning") or "",
+                    venue_type=lead_dict.get("venue_type"),
+                )
+                response_draft = st.session_state.get(response_key) or {}
+                result = onboard_inbound(
+                    lead_obj,
+                    response_draft,
+                    rep_id=rep_id,
+                    tier=int(st.session_state.get("inbound_tier", 2)),
+                )
+                if result.get("duplicate_of"):
+                    st.success(
+                        f"Updated existing deal {result['deal_id']} (was already in HubSpot). "
+                        f"Stage set to 'In conversation' and the inbound logged as a note."
+                        + (" Response queued for review." if result.get("queue_added") else "")
+                    )
+                else:
+                    st.success(
+                        f"Added to pipeline as deal {result['deal_id']} (stage: In conversation)."
+                        + (" Response queued — find it on the Daily Queue page." if result.get("queue_added") else "")
+                    )
+                st.session_state.pop(extracted_key, None)
+                st.session_state.pop(response_key, None)
+                st.session_state.pop("inbound_raw_text", None)
+            except Exception as e:
+                st.error(f"Onboard failed: {e}")
+
+    if discard_col.button("🗑  Discard", use_container_width=True):
+        st.session_state.pop(extracted_key, None)
+        st.session_state.pop(response_key, None)
+        st.session_state.pop("inbound_raw_text", None)
+        st.rerun()
+
+
 def main():
     page = sidebar()
 
@@ -983,6 +1221,8 @@ def main():
         page_pipeline()
     elif page == "Daily Queue":
         page_queue()
+    elif page == "Inbound":
+        page_inbound()
     elif page == "Run Agent":
         page_run_agent()
     elif page == "Team":
