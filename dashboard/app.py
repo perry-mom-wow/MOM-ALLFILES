@@ -546,6 +546,78 @@ def page_queue():
             use_container_width=True,
         )
 
+    # ── Inline editor: paste back contact info you found via search ──────────
+    missing_labels = [
+        n for n, v in (
+            ("LinkedIn", linkedin_url),
+            ("Email", email),
+            ("Phone", phone),
+            ("Instagram", instagram),
+        ) if not v
+    ]
+    expander_label = (
+        f"✏️ Add missing contact info ({', '.join(missing_labels)})"
+        if missing_labels else
+        "✏️ Update contact info"
+    )
+    with st.expander(expander_label, expanded=bool(missing_labels)):
+        edit_cols = st.columns(2)
+        with edit_cols[0]:
+            new_linkedin = st.text_input(
+                "LinkedIn URL",
+                value=linkedin_url or "",
+                placeholder="https://linkedin.com/in/...",
+                key=f"li_{deal_id}_{idx}",
+            )
+            new_phone = st.text_input(
+                "Phone",
+                value=phone or "",
+                placeholder="+351 ...",
+                key=f"ph_{deal_id}_{idx}",
+            )
+        with edit_cols[1]:
+            new_email = st.text_input(
+                "Email",
+                value=email or "",
+                placeholder="name@venue.com",
+                key=f"em_{deal_id}_{idx}",
+            )
+            new_instagram = st.text_input(
+                "Instagram handle",
+                value=(instagram or "").lstrip("@"),
+                placeholder="venuehandle (no @)",
+                key=f"ig_{deal_id}_{idx}",
+            )
+
+        save_col, _ = st.columns([1, 3])
+        if save_col.button(
+            "💾 Save contact info",
+            key=f"save_contact_{deal_id}_{idx}",
+            type="primary",
+            disabled=not deal_id,
+            use_container_width=True,
+        ):
+            from tools.outreach_queue import update_contact_info
+            patch = {
+                "linkedin_url": new_linkedin.strip() or None,
+                "email": new_email.strip() or None,
+                "phone": new_phone.strip() or None,
+                "instagram_handle": new_instagram.strip() or None,
+            }
+            patch = {k: v for k, v in patch.items() if v}
+            if not patch:
+                st.warning("Nothing to save — all fields are empty.")
+            else:
+                try:
+                    n = update_contact_info(rep_id, deal_id, patch)
+                    if n:
+                        st.success(f"Saved. Updated {n} file(s). Refreshing...")
+                        st.rerun()
+                    else:
+                        st.info("Nothing changed (values already saved).")
+                except Exception as e:
+                    st.error(f"Save failed: {e}")
+
     st.divider()
 
     # Message — st.code gives a built-in copy button

@@ -123,6 +123,77 @@ def clear_queue(rep_id: str, day: Optional[date] = None) -> None:
         path.unlink()
 
 
+CONTACT_FIELDS: tuple[str, ...] = (
+    "email",
+    "linkedin_url",
+    "instagram_handle",
+    "phone",
+    "contact_name",
+    "contact_title",
+)
+
+
+def update_contact_info(rep_id: str, deal_id: str, fields: dict) -> int:
+    """Patch contact fields (email, linkedin_url, etc.) on every queued item
+    for this deal across all queue files, plus the deal's sequence file.
+
+    Returns the total count of records updated. `fields` keys must be in
+    CONTACT_FIELDS; empty/None values are ignored so a partial update doesn't
+    wipe existing data.
+    """
+    clean: dict = {k: v for k, v in fields.items() if k in CONTACT_FIELDS and v}
+    if not clean or not deal_id:
+        return 0
+
+    updated = 0
+    # Walk every queue file for this rep — older queues may still hold pending
+    # items for this deal (carryover) and need the same patch.
+    for path in QUEUE_DIR.glob(f"{rep_id}_*.json"):
+        try:
+            items = json.loads(path.read_text())
+        except Exception:
+            continue
+        changed = False
+        for it in items:
+            if it.get("deal_id") == deal_id:
+                for k, v in clean.items():
+                    if it.get(k) != v:
+                        it[k] = v
+                        changed = True
+        if changed:
+            with open(path, "w") as f:
+                json.dump(items, f, indent=2, default=str)
+            updated += 1
+
+    # Mirror into the canonical sequence file so newly-generated follow-ups inherit.
+    seq_path = Path(__file__).parent.parent / "data" / "sequences" / f"{deal_id}.json"
+    if seq_path.exists():
+        try:
+            seq = json.loads(seq_path.read_text())
+            seq_changed = False
+            seq_field_map = {
+                "email": "contact_email",
+                "linkedin_url": "linkedin_url",
+                "instagram_handle": "instagram_handle",
+                "phone": "phone",
+                "contact_name": "contact_name",
+                "contact_title": "contact_title",
+            }
+            for k, v in clean.items():
+                seq_key = seq_field_map[k]
+                if seq.get(seq_key) != v:
+                    seq[seq_key] = v
+                    seq_changed = True
+            if seq_changed:
+                with open(seq_path, "w") as f:
+                    json.dump(seq, f, indent=2, default=str)
+                updated += 1
+        except Exception:
+            pass
+
+    return updated
+
+
 def format_queue_for_display(items: list[dict]) -> str:
     """Return a human-readable queue summary for CLI or dashboard."""
     if not items:
