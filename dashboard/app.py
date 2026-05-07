@@ -1037,16 +1037,37 @@ def page_inbound():
     st.divider()
     st.subheader("📋 Extracted lead — review and edit before committing")
 
-    if not lead_dict.get("is_lead"):
+    if lead_dict.get("extraction_error"):
+        # Technical failure — DO NOT blame the message.
         st.error(
-            f"This doesn't look like a real inbound lead.\n\n"
-            f"**Reason:** {lead_dict.get('reasoning', 'unspecified')}"
+            f"⚙️ Extraction failed for technical reasons (this is a config issue, "
+            f"not a problem with your inbound).\n\n"
+            f"**Detail:** {lead_dict['extraction_error']}"
         )
-        if st.button("🗑  Discard", key="discard_extract"):
+        if "ANTHROPIC_API_KEY" in lead_dict["extraction_error"]:
+            st.info(
+                "The running Streamlit process can't see your `ANTHROPIC_API_KEY`. "
+                "Stop and restart the app from a shell where `.env` has been loaded "
+                "(or the key is exported), then try again."
+            )
+        if st.button("🔁 Try again", key="retry_extract"):
             st.session_state.pop(extracted_key, None)
             st.session_state.pop(response_key, None)
             st.rerun()
         return
+
+    if not lead_dict.get("is_lead"):
+        st.error(
+            f"The model judged this not to be a real inbound lead.\n\n"
+            f"**Reason:** {lead_dict.get('reasoning', 'unspecified')}\n\n"
+            "If you disagree (e.g. it's a real lead the model misread), use the "
+            "form below to fix the fields and commit anyway."
+        )
+        # Allow override — fall through to the editable form so Perry can fix
+        # anything the model missed and commit despite is_lead=False.
+        lead_dict["is_lead"] = True
+        st.session_state[extracted_key] = lead_dict
+        st.warning("Override active — review every field carefully before committing.")
 
     confidence = lead_dict.get("confidence") or 0.0
     if confidence < 0.6:

@@ -58,6 +58,10 @@ class ExtractedLead:
     confidence: float
     reasoning: str  # why is_lead is true/false
     venue_type: Optional[str] = None  # restaurant / hotel / spa / etc
+    # If set, extraction failed for TECHNICAL reasons (no API key, model error,
+    # bad JSON). Distinct from is_lead=False, which means the model judged the
+    # input not to be a real lead. Lets the dashboard show the right error.
+    extraction_error: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -80,6 +84,7 @@ class ExtractedLead:
             confidence=0.0,
             reasoning=reason,
             venue_type=None,
+            extraction_error=reason,
         )
 
 
