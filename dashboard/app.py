@@ -479,7 +479,39 @@ def page_queue():
     deal_id = item.get("deal_id", "")
     contact_id = item.get("contact_id", "")
 
+    # ── Auto-swap to email when there is no LinkedIn profile ─────────────────
+    # The queue holds LinkedIn-shaped messages by default. If we have no
+    # LinkedIn URL on the prospect, that copy is unsendable — flip the card
+    # to show the email opener from the sequence file (subject + body) so
+    # Perry can paste the email instead. He can revert the swap by adding a
+    # LinkedIn URL via the editor below.
+    swapped_to_email = False
+    email_subject: str = ""
+    if (not linkedin_url) and channel.lower() == "linkedin" and deal_id:
+        seq_path = ROOT / "data" / "sequences" / f"{deal_id}.json"
+        if seq_path.exists():
+            try:
+                seq_data = json.loads(seq_path.read_text())
+                email_opener = (seq_data.get("messages") or {}).get("email_opener") or {}
+                if email_opener.get("body"):
+                    swapped_to_email = True
+                    msg_type = "Email Opener (LinkedIn unavailable)"
+                    channel = "Email"
+                    message = email_opener["body"]
+                    email_subject = email_opener.get("subject") or f"Quick note from MOM about {venue}"
+                    # If the queue item didn't have an email but the sequence
+                    # file does, surface it for the contact buttons.
+                    if not email and seq_data.get("contact_email"):
+                        email = seq_data["contact_email"]
+            except Exception:
+                pass
+
     st.subheader(venue)
+    if swapped_to_email:
+        st.caption(
+            "📧 No LinkedIn profile on file — showing **email opener** instead. "
+            "Add a LinkedIn URL below to switch back."
+        )
     meta_parts = [msg_type, channel]
     if contact_name:
         meta_parts.append(contact_name)
@@ -689,7 +721,12 @@ def page_queue():
     st.divider()
 
     # Message — st.code gives a built-in copy button
-    st.markdown("**Message** — click the copy icon top-right to copy")
+    if swapped_to_email and email_subject:
+        st.markdown("**Subject** — click the copy icon top-right to copy")
+        st.code(email_subject, language=None, wrap_lines=True)
+        st.markdown("**Body** — click the copy icon top-right to copy")
+    else:
+        st.markdown("**Message** — click the copy icon top-right to copy")
     st.code(message, language=None, wrap_lines=True)
 
     st.divider()
