@@ -490,15 +490,61 @@ def page_queue():
         meta_parts.append(f"queued {_format_eu_date(src_date)}")
     st.caption("  ·  ".join(meta_parts))
 
-    # Contact links
-    link_cols = st.columns(4)
-    col_i = 0
+    # Contact channels — always render a clickable button per channel.
+    # If we have the real link/address: open it.
+    # If we don't: open a Google search so the rep can find it in 1 click.
+    from urllib.parse import quote_plus
+
+    def _gsearch(q: str) -> str:
+        return f"https://www.google.com/search?q={quote_plus(q)}"
+
+    venue_query = venue
+    address = item.get("address")
+    if address:
+        # Use the city/area, not the full street address — broader hit rate.
+        city = address.split(",")[-1].strip() or "Lisbon"
+        venue_query = f'"{venue}" {city}'
+    else:
+        venue_query = f'"{venue}" Lisbon'
+
+    phone = item.get("phone")
+    instagram = item.get("instagram_handle")
+
+    buttons: list[dict] = []
     if linkedin_url:
-        link_cols[col_i].link_button("Open LinkedIn", linkedin_url, type="primary")
-        col_i += 1
+        buttons.append({"label": "💼 Open LinkedIn", "url": linkedin_url, "type": "primary"})
+    else:
+        buttons.append({
+            "label": "🔍 Find LinkedIn",
+            "url": _gsearch(f"site:linkedin.com {venue_query}"),
+            "help": "No LinkedIn on file — opens a Google search",
+        })
+
     if email:
-        link_cols[col_i].link_button("Open Email", f"mailto:{email}")
-        col_i += 1
+        buttons.append({"label": "✉️ Open Email", "url": f"mailto:{email}"})
+    else:
+        buttons.append({
+            "label": "🔍 Find Email",
+            "url": _gsearch(f"{venue_query} contact email"),
+            "help": "No email on file — opens a Google search",
+        })
+
+    if phone:
+        buttons.append({"label": f"📞 {phone}", "url": f"tel:{phone}"})
+
+    if instagram:
+        handle = instagram.lstrip("@")
+        buttons.append({"label": f"📷 @{handle}", "url": f"https://instagram.com/{handle}"})
+
+    link_cols = st.columns(len(buttons))
+    for col, b in zip(link_cols, buttons):
+        col.link_button(
+            b["label"],
+            b["url"],
+            type=b.get("type", "secondary"),
+            help=b.get("help"),
+            use_container_width=True,
+        )
 
     st.divider()
 
