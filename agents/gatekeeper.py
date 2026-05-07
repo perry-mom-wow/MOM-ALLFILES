@@ -82,3 +82,19 @@ def validate_prospect(profile: ProspectProfile) -> tuple[bool, str]:
     except Exception:
         # On any error, accept (don't block real prospects due to API issues)
         return True, ""
+
+
+# ── Voice gate for EA drafts ──────────────────────────────────────────────────
+# The EA drafter must pass every outbound through this gate. A failed draft is
+# regenerated, never sent (spec §11 voice integrity hard rule).
+
+def gate_draft_voice(
+    text: str,
+    *,
+    archetype: str = "default",
+    subject: Optional[str] = None,
+) -> tuple[bool, list[dict]]:
+    """Returns (is_valid, violations_as_dicts). Use before writing to Gmail Drafts."""
+    from brain.voice_validator import validate
+    result = validate(text, archetype=archetype, subject=subject)
+    return result.passed, [v.to_dict() for v in result.violations]

@@ -320,6 +320,21 @@ Generate the full outreach sequence. Respond with JSON in this exact format:
     )
 
 
+# ── EA voice validation pass-through ──────────────────────────────────────────
+# Used by the EA drafter (brain/drafter.py). For B2B rep sequences (above)
+# voice rules differ per rep, so we don't run the validator on them.
+
+def validate_in_perrys_voice(text: str, *, archetype: str = "default", subject: Optional[str] = None) -> dict:
+    """Validate a draft against Perry's voice rules. Returns the ValidationResult dict.
+
+    archetype:
+      - "default" for replies, follow-ups, declines, vendor financial.
+      - "cold" for cold outreach (extra rules: word count, permission line).
+    """
+    from brain.voice_validator import validate
+    return validate(text, archetype=archetype, subject=subject).to_dict()
+
+
 def generate_reengage_message(
     profile: ProspectProfile,
     rep_id: str,
