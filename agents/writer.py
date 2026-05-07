@@ -407,6 +407,112 @@ Draft a warm, direct response. Address their specific ask. Keep it 60-120 words 
     }
 
 
+# ── Conversation follow-up drafter ────────────────────────────────────────────
+# Once a deal is in active conversation, the cold-cadence templates (D3/D7/D14
+# stock followups generated up-front) are wrong: they read like spam over the
+# top of a real exchange. This generator drafts a fresh, context-aware follow-up
+# that references the actual last message we sent and the prospect's intent.
+
+CONVO_FOLLOWUP_SYSTEM_PROMPT = f"""\
+You are drafting a follow-up nudge in an ongoing B2B sales conversation for MOM (Longevity Alchemists).
+
+{BRAND_CONTEXT}
+
+CRITICAL RULES FOR CONVERSATION FOLLOW-UPS:
+- This is NOT a cold pitch. Both sides have already engaged. Don't reintroduce yourself or re-pitch the brand.
+- Reference the previous exchange specifically. Acknowledge their last message and what we proposed.
+- Be light, human, low-pressure. Keep it 30-80 words for the body.
+- Single ask: a clarifying question, a date suggestion, or a "still interested?" check.
+- Match the tone of escalation by `nudge_count`:
+    1 = friendly reminder ("just nudging this back up")
+    2 = quick check-in ("happy to wait if timing isn't right")
+    3 = courteous one more try ("let me know either way and I'll stop chasing")
+    4+ = warm-but-direct ("if this isn't the right moment, totally fine to close the loop")
+- Sign-off: short. Match how the rep usually signs off in their voice samples.
+
+PUNCTUATION:
+- NEVER em dashes (— or –) or double hyphens (--).
+- NEVER AI tells: "I hope this finds you well", "circling back", "touching base", "just following up to circle back".
+- "Just wanted to..." and "Quick one..." are acceptable openers.
+
+Respond ONLY with valid JSON:
+{{
+  "subject": "short reply-style subject (e.g. 'Re: Mallorca run + MOM') or empty string for a chat channel",
+  "body": "the follow-up message"
+}}
+"""
+
+
+def generate_conversation_followup(
+    *,
+    venue_name: str,
+    contact_name: Optional[str],
+    intent: Optional[str],
+    last_outbound_subject: Optional[str],
+    last_outbound_body: Optional[str],
+    last_inbound_excerpt: Optional[str],
+    nudge_count: int,
+    days_since_last_outbound: int,
+    rep_id: str,
+) -> dict:
+    """Draft a context-aware nudge based on the actual conversation history.
+
+    Returns {'subject': str, 'body': str}.
+    """
+    rep = get_rep_by_id(rep_id)
+    if not rep:
+        raise ValueError(f"Rep '{rep_id}' not found in reps.yaml")
+
+    rep_context = _build_rep_context(rep)
+
+    user_content = f"""\
+{rep_context}
+
+CONVERSATION CONTEXT
+Venue: {venue_name}
+Contact: {contact_name or 'unknown'}
+Their original intent: {intent or 'not recorded'}
+Days since we last sent: {days_since_last_outbound}
+This is nudge #{nudge_count} in the cadence (3, 7, 14, 21, 28 days, then every 5 weeks).
+
+LAST MESSAGE WE SENT
+Subject: {last_outbound_subject or '(no subject on file)'}
+Body:
+\"\"\"
+{last_outbound_body or '(body not on file — keep the nudge generic but warm)'}
+\"\"\"
+
+THEIR PRIOR MESSAGE TO US (if any)
+\"\"\"
+{last_inbound_excerpt or '(none on file)'}
+\"\"\"
+
+Draft a follow-up nudge. Reference the prior exchange. 30-80 words. JSON only.
+"""
+
+    response = _get_client().messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=400,
+        system=[{
+            "type": "text",
+            "text": CONVO_FOLLOWUP_SYSTEM_PROMPT,
+            "cache_control": {"type": "ephemeral"},
+        }],
+        messages=[{"role": "user", "content": user_content}],
+    )
+
+    raw = response.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```", 2)[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    data = json.loads(raw)
+    return {
+        "subject": str(data.get("subject") or "").strip(),
+        "body": str(data.get("body") or "").strip(),
+    }
+
+
 # ── EA voice validation pass-through ──────────────────────────────────────────
 # Used by the EA drafter (brain/drafter.py). For B2B rep sequences (above)
 # voice rules differ per rep, so we don't run the validator on them.

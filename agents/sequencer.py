@@ -73,6 +73,17 @@ def run_daily(today: Optional[date] = None) -> dict:
             skipped.append({"deal_id": deal_id, "reason": f"stage={stage} — human conversation active, no automated messages"})
             continue
 
+        # Also skip any deal under the new conversation tracker — those nudges
+        # are surfaced in the Daily Queue (with Claude-drafted, context-aware
+        # follow-ups) rather than the cold-template cadence.
+        try:
+            from agents import conversation_tracker as ct
+            if ct.get_state(deal_id) is not None:
+                skipped.append({"deal_id": deal_id, "reason": "in conversation_tracker — handled by Daily Queue nudges"})
+                continue
+        except Exception:
+            pass
+
         deal_state = _get_deal_state(state, deal_id)
         prospect_name = re.sub(r"\s*[—·]\s*(mom-wow|MOM).*$", "", props.get("dealname", "Unknown")).strip()
 

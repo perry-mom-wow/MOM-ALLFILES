@@ -231,19 +231,47 @@ def onboard_prospect(
 
 
 def mark_replied(deal_id: str, contact_id: str, channel: str = "unknown") -> None:
-    """
-    Mark a deal as replied — from ANY channel (LinkedIn, email, phone, WhatsApp, in person).
-    This immediately stops ALL automated follow-ups and re-engagements.
+    """Mark a deal as replied — from ANY channel.
+
+    Stops cold-template auto-follow-ups (sequencer skips 'replied' stage) and
+    flips conversation ownership to us via conversation_tracker. The deal is
+    now in active conversation: nudges fire on the new cadence (3/7/14/21/28d
+    then every 5 weeks), but no auto-send — Perry approves each one.
     """
     hs.update_deal_stage(deal_id, "replied")
     hs.log_note(
         contact_id,
         deal_id,
         f"✅ Prospect replied via {channel}.\n"
-        f"🛑 ALL automated follow-ups and re-engagement messages stopped.\n"
-        f"Human-led conversation now active — do not send any further automated messages.",
+        f"🛑 Cold-template auto-follow-ups stopped.\n"
+        f"🔄 Conversation tracking active — nudge cadence: 3/7/14/21/28d, then 5-weekly.\n"
+        f"All future follow-ups draft for review (no auto-send).",
     )
     _cancel_queued_messages(deal_id)
+    # Flip ownership to us so the Daily Queue surfaces this as a "we owe them"
+    # item at the top.
+    try:
+        from agents import conversation_tracker as ct
+        ct.mark_inbound(deal_id)
+    except Exception:
+        pass
+
+
+def mark_outbound_sent(deal_id: str) -> None:
+    """Record an outbound send for conversation tracking.
+
+    Called by the dashboard when Perry hits "✅ Sent — Next" on a queue item
+    that's already in conversation (i.e. has a conversation block on its
+    sequence file). Pure delegation — kept here so callers don't need to
+    import the tracker directly.
+    """
+    try:
+        from agents import conversation_tracker as ct
+        ct.mark_outbound(deal_id)
+    except Exception as e:
+        # Tracking is non-critical to the core "sent" action.
+        import logging
+        logging.getLogger(__name__).warning("mark_outbound_sent failed: %s", e)
 
 
 def _cancel_queued_messages(deal_id: str) -> None:

@@ -152,6 +152,13 @@ def onboard_inbound(
     # picks up the response draft (mirrors agents.crm._save_sequence shape).
     _save_inbound_sequence_stub(deal_id, lead, rep_id, rep, response_draft)
 
+    # Start conversation tracking from "they wrote first" (we owe them a reply).
+    try:
+        from agents import conversation_tracker as ct
+        ct.mark_inbound(deal_id)
+    except Exception as e:
+        log.warning("Could not start conversation tracking for %s: %s", deal_id, e)
+
     queued = _queue_response(
         rep_id, rep, lead, response_draft, deal_id,
         deal_props={"dealname": f"{lead.venue_name} · MOM {rep_tag}"},

@@ -433,6 +433,162 @@ def page_pipeline():
                         st.error(f"Error: {e}")
 
 
+# ── Conversation nudges (top of Daily Queue) ──────────────────────────────────
+
+def _render_conversation_nudges(rep_id: str) -> None:
+    """List deals due for a follow-up under the conversation tracker.
+
+    Each nudge offers: see context, draft a fresh follow-up, mark as sent
+    (advances the cadence), pause, mark won/lost.
+    """
+    try:
+        from agents import conversation_tracker as ct
+    except Exception as e:
+        st.warning(f"Conversation tracker unavailable: {e}")
+        return
+
+    nudges = ct.due_nudges(rep_id=rep_id)
+    if not nudges:
+        return
+
+    we_owe = [n for n in nudges if n["kind"] == "we_owe_them"]
+    chase = [n for n in nudges if n["kind"] == "nudge_them"]
+    capped = [n for n in nudges if n["kind"] == "past_cap"]
+
+    title_bits = []
+    if we_owe:  title_bits.append(f"{len(we_owe)} you owe a reply")
+    if chase:   title_bits.append(f"{len(chase)} due for a nudge")
+    if capped:  title_bits.append(f"{len(capped)} past 12-month cap")
+
+    st.markdown(
+        f"### 🔔 Conversation Nudges &nbsp;<span style='color:{TERRACOTTA};font-size:14px;font-weight:400'>"
+        f"{' · '.join(title_bits)}</span>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "These are deals already in conversation. The cold-cadence sequencer "
+        "ignores them — instead, follow-ups are drafted fresh per nudge. "
+        "Hit '✍️ Draft' → review → '✅ Mark sent' to advance the cadence."
+    )
+
+    for n in nudges:
+        deal_id = n["deal_id"]
+        kind_emoji = {
+            "we_owe_them": "📥",
+            "nudge_them": "🔔",
+            "past_cap": "⏳",
+        }.get(n["kind"], "•")
+        kind_label = {
+            "we_owe_them": "You owe a reply",
+            "nudge_them": f"Nudge #{n['nudge_count'] + 1} due",
+            "past_cap": "Past 12-month cap",
+        }.get(n["kind"], n["kind"])
+        days = n.get("days_overdue") or 0
+        days_label = f"{days}d overdue" if n["kind"] == "we_owe_them" else f"{days}d ago"
+
+        with st.expander(
+            f"{kind_emoji}  **{n['prospect_name']}**  ·  {kind_label}  ·  {days_label}",
+            expanded=False,
+        ):
+            ctx_cols = st.columns([3, 2])
+            with ctx_cols[0]:
+                if n.get("contact_name"):
+                    st.caption(f"Contact: {n['contact_name']}")
+                if n.get("intent"):
+                    st.markdown(f"_Original intent:_ {n['intent']}")
+                if n.get("last_outbound_at"):
+                    st.caption(f"Last sent: {n['last_outbound_at'][:10]}")
+                if n.get("last_inbound_at"):
+                    st.caption(f"They last wrote: {n['last_inbound_at'][:10]}")
+
+            with ctx_cols[1]:
+                # Channel buttons (only what we have).
+                if n.get("contact_email"):
+                    st.link_button(f"✉️ {n['contact_email']}", f"mailto:{n['contact_email']}",
+                                   use_container_width=True)
+                if n.get("linkedin_url"):
+                    st.link_button("💼 Open LinkedIn", n["linkedin_url"], use_container_width=True)
+                if n.get("phone"):
+                    st.link_button(f"📞 {n['phone']}", f"tel:{n['phone']}", use_container_width=True)
+
+            # ── Draft response ───────────────────────────────────────────
+            draft_key = f"nudge_draft_{deal_id}"
+            if draft_key not in st.session_state:
+                if st.button(
+                    "✍️ Draft follow-up",
+                    key=f"nudge_gen_{deal_id}",
+                    type="primary" if n["kind"] == "we_owe_them" else "secondary",
+                ):
+                    with st.spinner("Drafting..."):
+                        try:
+                            from agents.writer import generate_conversation_followup
+                            seq = json.loads((ROOT / "data" / "sequences" / f"{deal_id}.json").read_text())
+                            messages = seq.get("messages") or {}
+                            last_outbound = (
+                                messages.get("email_opener")
+                                or messages.get("linkedin_opener")
+                                or {}
+                            )
+                            draft = generate_conversation_followup(
+                                venue_name=n["prospect_name"],
+                                contact_name=n.get("contact_name"),
+                                intent=n.get("intent"),
+                                last_outbound_subject=last_outbound.get("subject"),
+                                last_outbound_body=last_outbound.get("body"),
+                                last_inbound_excerpt=None,
+                                nudge_count=n["nudge_count"],
+                                days_since_last_outbound=days if n["kind"] != "we_owe_them" else 0,
+                                rep_id=rep_id,
+                            )
+                            st.session_state[draft_key] = draft
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Draft failed: {e}")
+            else:
+                draft = st.session_state[draft_key]
+                if draft.get("subject"):
+                    st.markdown("**Subject** — copy")
+                    st.code(draft["subject"], language=None, wrap_lines=True)
+                st.markdown("**Body** — copy")
+                st.code(draft.get("body") or "", language=None, wrap_lines=True)
+
+                act_cols = st.columns([1, 1, 1, 1])
+                if act_cols[0].button("✅ Mark sent", key=f"nudge_sent_{deal_id}", type="primary"):
+                    try:
+                        from agents.crm import mark_outbound_sent
+                        mark_outbound_sent(deal_id)
+                        st.session_state.pop(draft_key, None)
+                        st.toast(f"Marked sent — next nudge scheduled per cadence.", icon="✅")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                if act_cols[1].button("🔄 Regenerate", key=f"nudge_regen_{deal_id}"):
+                    st.session_state.pop(draft_key, None)
+                    st.rerun()
+                if act_cols[2].button("🏆 Won", key=f"nudge_won_{deal_id}"):
+                    try:
+                        from agents.crm import mark_won
+                        from agents import conversation_tracker as ct2
+                        mark_won(deal_id, "")
+                        ct2.mark_terminal(deal_id, "won")
+                        st.session_state.pop(draft_key, None)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                if act_cols[3].button("❌ Lost", key=f"nudge_lost_{deal_id}"):
+                    try:
+                        from agents.crm import mark_lost
+                        from agents import conversation_tracker as ct2
+                        mark_lost(deal_id, "", reason="manual close from nudge")
+                        ct2.mark_terminal(deal_id, "lost")
+                        st.session_state.pop(draft_key, None)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+    st.divider()
+
+
 # ── Daily Queue page ───────────────────────────────────────────────────────────
 
 def page_queue():
@@ -446,8 +602,12 @@ def page_queue():
 
     st.title(f"Daily Queue — {rep_name}")
 
+    # ── Conversation nudges (always render — driven by conversation_tracker,
+    # not the cold queue) ────────────────────────────────────────────────────
+    _render_conversation_nudges(rep_id)
+
     if not items:
-        st.success("Queue is empty — all caught up!")
+        st.success("Cold queue is empty — all caught up on outreach!")
         return
 
     if carryover:
@@ -734,14 +894,36 @@ def page_queue():
     # ── Actions ───────────────────────────────────────────────────────────────
     action_cols = st.columns([2, 1, 2])
 
+    # ── Action row ───────────────────────────────────────────────────────────
+    # Detect whether this deal is already in conversation; if so, "Sent — Next"
+    # marks an outbound on the tracker instead of pushing the cold-stage update.
+    in_conversation = False
+    if deal_id:
+        try:
+            from agents import conversation_tracker as ct
+            in_conversation = ct.get_state(deal_id) is not None
+        except Exception:
+            pass
+
     with action_cols[0]:
-        if st.button("✅  Sent — Next", type="primary", use_container_width=True):
+        sent_label = "✅  Sent — Next (track conversation)" if in_conversation else "✅  Sent — Next"
+        if st.button(sent_label, type="primary", use_container_width=True):
             if deal_id:
-                try:
-                    from tools import hubspot_client as hs
-                    hs.update_deal_stage(deal_id, "contacted")
-                except Exception as e:
-                    st.warning(f"Couldn't update HubSpot stage: {e}")
+                if in_conversation:
+                    # Already past cold-stage. Just record the outbound on the
+                    # tracker so the next nudge fires per cadence (3/7/14/21/28d
+                    # then 5-weekly).
+                    try:
+                        from agents.crm import mark_outbound_sent
+                        mark_outbound_sent(deal_id)
+                    except Exception as e:
+                        st.warning(f"Couldn't update conversation tracker: {e}")
+                else:
+                    try:
+                        from tools import hubspot_client as hs
+                        hs.update_deal_stage(deal_id, "contacted")
+                    except Exception as e:
+                        st.warning(f"Couldn't update HubSpot stage: {e}")
             log_sent(rep_id, item)
             remove_pending_item(rep_id, item)
             if idx >= total - 1:
@@ -754,23 +936,63 @@ def page_queue():
             st.rerun()
 
     with action_cols[2]:
-        with st.popover("🛑 They Replied", use_container_width=True):
-            st.markdown(f"**Stop all follow-ups for {venue}?**")
-            st.caption("Use this if they reply via LinkedIn, email, WhatsApp, phone, or in person.")
-            reply_channel = st.selectbox(
-                "Channel they replied on",
-                ["LinkedIn", "Email", "WhatsApp", "Phone", "In person", "Other"],
-                key="reply_channel_popover",
+        with st.popover("⚙️  Status", use_container_width=True):
+            st.markdown(f"**Update status for {venue}**")
+            st.caption(
+                "🔄 Replied = ongoing conversation, nudge cadence kicks in (3/7/14/21/28d then 5w). "
+                "🏆 / ❌ = terminal close, no more nudges. ⏸ = manual pause until a date."
             )
-            if st.button("Confirm — Stop All Follow-ups", type="primary", disabled=not deal_id):
-                try:
-                    from agents.crm import mark_replied
-                    mark_replied(deal_id, contact_id, channel=reply_channel)
-                    st.success(f"Stopped all follow-ups for {venue}.")
-                    st.session_state.queue_index = max(0, idx - 1)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {e}")
+            reply_channel = st.selectbox(
+                "Channel (if they replied)",
+                ["LinkedIn", "Email", "WhatsApp", "Phone", "In person", "Other"],
+                key=f"reply_channel_{deal_id}",
+            )
+            b1, b2 = st.columns(2)
+            with b1:
+                if st.button("🔄 They Replied", type="primary", disabled=not deal_id, key=f"st_replied_{deal_id}"):
+                    try:
+                        from agents.crm import mark_replied
+                        mark_replied(deal_id, contact_id, channel=reply_channel)
+                        st.success(f"Started conversation tracking for {venue}.")
+                        st.session_state.queue_index = max(0, idx - 1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                if st.button("🏆 Won", disabled=not deal_id, key=f"st_won_{deal_id}"):
+                    try:
+                        from agents.crm import mark_won
+                        from agents import conversation_tracker as ct
+                        mark_won(deal_id, contact_id)
+                        ct.mark_terminal(deal_id, "won")
+                        st.success(f"Marked {venue} as Won.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            with b2:
+                if st.button("❌ Lost / Not now", disabled=not deal_id, key=f"st_lost_{deal_id}"):
+                    try:
+                        from agents.crm import mark_lost
+                        from agents import conversation_tracker as ct
+                        mark_lost(deal_id, contact_id, reason="manual close")
+                        ct.mark_terminal(deal_id, "lost")
+                        st.success(f"Marked {venue} as Lost.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+                pause_date = st.date_input(
+                    "⏸ Pause until",
+                    value=date.today(),
+                    key=f"st_pause_{deal_id}",
+                )
+                if st.button("Confirm pause", disabled=not deal_id, key=f"st_pause_btn_{deal_id}"):
+                    try:
+                        from agents import conversation_tracker as ct
+                        ct.pause_until(deal_id, pause_date)
+                        st.success(f"Paused {venue} until {pause_date}.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
 
     st.divider()
 
