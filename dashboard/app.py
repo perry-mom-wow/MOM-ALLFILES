@@ -608,15 +608,41 @@ def page_queue():
             if not patch:
                 st.warning("Nothing to save — all fields are empty.")
             else:
+                # ── 1. Local save (queue files + sequence file) ──
                 try:
                     n = update_contact_info(rep_id, deal_id, patch)
-                    if n:
-                        st.success(f"Saved. Updated {n} file(s). Refreshing...")
-                        st.rerun()
-                    else:
-                        st.info("Nothing changed (values already saved).")
                 except Exception as e:
-                    st.error(f"Save failed: {e}")
+                    st.error(f"Local save failed: {e}")
+                    n = 0
+
+                # ── 2. HubSpot push (fail-soft — local save still counts) ──
+                hs_msg: str = ""
+                hs_ok = False
+                try:
+                    from tools.hubspot_client import push_contact_info_to_deal
+                    res = push_contact_info_to_deal(deal_id, patch)
+                    if res.get("skipped"):
+                        hs_msg = f"HubSpot skipped — {res['skipped']}."
+                    elif res.get("updated"):
+                        hs_ok = True
+                        hs_msg = (
+                            f"HubSpot updated: {', '.join(res['updated'])}."
+                            + (f" Dropped (no such property): {', '.join(res['dropped'])}." if res.get("dropped") else "")
+                        )
+                    else:
+                        hs_msg = "HubSpot returned no updates."
+                except Exception as e:
+                    hs_msg = f"HubSpot push failed: {e} (local save was OK)."
+
+                if n and hs_ok:
+                    st.success(f"Saved locally ({n} file(s)) and pushed to HubSpot. {hs_msg}")
+                elif n:
+                    st.success(f"Saved locally ({n} file(s)). {hs_msg}")
+                elif hs_ok:
+                    st.success(f"No local change. {hs_msg}")
+                else:
+                    st.info(f"Nothing changed locally. {hs_msg}")
+                st.rerun()
 
     st.divider()
 

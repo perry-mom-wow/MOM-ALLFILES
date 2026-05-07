@@ -281,6 +281,97 @@ def get_deal_associations(deal_id: str) -> dict:
     return out
 
 
+def update_contact_properties(contact_id: str, props: dict[str, Any]) -> dict:
+    """Patch contact properties in HubSpot. Drops any property the portal
+    does not recognise (per `_create_contact_tolerant`) instead of failing
+    the whole call. Returns {'updated': [...], 'dropped': [...]}.
+    """
+    client = _get_client()
+    remaining = {k: v for k, v in props.items() if v not in (None, "")}
+    dropped: list[str] = []
+    while remaining:
+        try:
+            client.crm.contacts.basic_api.update(
+                contact_id=contact_id,
+                simple_public_object_input={"properties": remaining},
+            )
+            return {"updated": list(remaining.keys()), "dropped": dropped}
+        except Exception as e:
+            haystack = str(getattr(e, "body", "") or "") + " " + str(e)
+            missing = re.findall(r'Property\s+\\?"([^"\\]+)\\?"\s+does not exist', haystack)
+            if not missing or not any(m in remaining for m in missing):
+                raise
+            for m in missing:
+                remaining.pop(m, None)
+                dropped.append(m)
+    return {"updated": [], "dropped": dropped}
+
+
+def get_primary_contact_id(deal_id: str) -> Optional[str]:
+    """Return the first contact ID associated with a deal, or None."""
+    if not deal_id:
+        return None
+    contacts = get_deal_associations(deal_id).get("contacts") or []
+    return contacts[0] if contacts else None
+
+
+# Mapping from our internal field names → HubSpot contact property names.
+# Mirrors what `upsert_contact` writes (linkedin_url → linkedin_bio,
+# instagram_handle → twitterhandle).
+_CONTACT_FIELD_TO_HS = {
+    "email": "email",
+    "linkedin_url": "linkedin_bio",
+    "instagram_handle": "twitterhandle",
+    "phone": "phone",
+    "contact_title": "jobtitle",
+}
+
+
+def push_contact_info_to_deal(deal_id: str, fields: dict) -> dict:
+    """Convenience: take our field-name dict, find the deal's primary contact,
+    and patch HubSpot. Returns {'contact_id', 'updated', 'dropped', 'skipped'}.
+
+    `fields` keys: email, linkedin_url, instagram_handle, phone,
+                   contact_name, contact_title.
+    contact_name is split on first space → firstname / lastname.
+    Empty/None values are silently skipped.
+    """
+    contact_id = get_primary_contact_id(deal_id)
+    if not contact_id:
+        return {
+            "contact_id": None,
+            "updated": [],
+            "dropped": [],
+            "skipped": "no contact associated with deal",
+        }
+
+    hs_props: dict[str, Any] = {}
+    for k, v in (fields or {}).items():
+        if v in (None, ""):
+            continue
+        if k == "contact_name":
+            first, _, last = (v or "").strip().partition(" ")
+            if first:
+                hs_props["firstname"] = first
+            if last:
+                hs_props["lastname"] = last
+            continue
+        hs_key = _CONTACT_FIELD_TO_HS.get(k)
+        if hs_key:
+            hs_props[hs_key] = v
+
+    if not hs_props:
+        return {"contact_id": contact_id, "updated": [], "dropped": [], "skipped": "no mappable fields"}
+
+    result = update_contact_properties(contact_id, hs_props)
+    return {
+        "contact_id": contact_id,
+        "updated": result["updated"],
+        "dropped": result["dropped"],
+        "skipped": None,
+    }
+
+
 def update_deal_owner(deal_id: str, new_owner_id: str) -> None:
     """Reassign a deal to a different HubSpot owner."""
     client = _get_client()
