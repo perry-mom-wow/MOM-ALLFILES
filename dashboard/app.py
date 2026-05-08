@@ -706,11 +706,22 @@ def page_queue():
     if linkedin_url:
         buttons.append({"label": "💼 Open LinkedIn", "url": linkedin_url, "type": "primary"})
     else:
-        buttons.append({
-            "label": "🔍 Find LinkedIn",
-            "url": _gsearch(f"site:linkedin.com {venue_query}"),
-            "help": "No LinkedIn on file — opens a Google search",
-        })
+        # If we know the contact's name, the Auto-find expander below will
+        # find their actual profile server-side. Hint Perry there instead of
+        # punting to a Google search; only fall back to Google when we have
+        # nothing to search by.
+        if contact_name:
+            buttons.append({
+                "label": f"🔍 Find {contact_name.split()[0]}'s LinkedIn",
+                "url": _gsearch(f'site:linkedin.com/in "{contact_name}" {venue_query}'),
+                "help": "Use 🔎 Auto-find below for a direct server-side lookup that fills the field — this button is just a manual Google fallback.",
+            })
+        else:
+            buttons.append({
+                "label": "🔍 Find LinkedIn",
+                "url": _gsearch(f"site:linkedin.com {venue_query}"),
+                "help": "No LinkedIn or contact name on file — opens a Google search",
+            })
 
     if email:
         buttons.append({"label": "✉️ Open Email", "url": f"mailto:{email}"})
@@ -778,7 +789,11 @@ def page_queue():
             from tools.contact_finder import auto_find_contacts
             with st.spinner(f"Searching for {venue}..."):
                 try:
-                    found = auto_find_contacts(venue, address)
+                    found = auto_find_contacts(
+                        venue,
+                        address,
+                        contact_name=contact_name or None,
+                    )
                     found_dict = found.to_dict()
                 except Exception as e:
                     found_dict = {}

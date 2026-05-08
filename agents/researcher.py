@@ -193,6 +193,33 @@ Gathered information:
             contact_title = None
             contact_linkedin = None
 
+    # ── Last-mile contact backfill via Tavily web search ─────────────────────
+    # Hunter + Tavily-LinkedIn covered the venue's domain and any LinkedIn
+    # company page, but we still routinely come back without an email or a
+    # named-person profile URL. tools.contact_finder.auto_find_contacts sweeps
+    # the public web (Tavily snippets + a homepage scrape) and, when we know
+    # who the contact is, runs a targeted /in/<slug> search for their LinkedIn.
+    try:
+        if not raw.email or not contact_linkedin or not raw.phone or not raw.instagram_handle:
+            from tools.contact_finder import auto_find_contacts
+            found = auto_find_contacts(
+                raw.name,
+                raw.address,
+                known_website=raw.website,
+                contact_name=contact_name,
+            )
+            if not raw.email and found.email:
+                raw.email = found.email
+            if not contact_linkedin and found.linkedin_url:
+                contact_linkedin = found.linkedin_url
+            if not raw.phone and found.phone:
+                raw.phone = found.phone
+            if not raw.instagram_handle and found.instagram_handle:
+                raw.instagram_handle = found.instagram_handle
+    except Exception as e:
+        # Non-blocking: research result still useful without the backfill.
+        print(f"      ⚠️  contact_finder backfill failed for '{raw.name}': {e}")
+
     return ProspectProfile(
         name=raw.name,
         venue_type=raw.venue_type,

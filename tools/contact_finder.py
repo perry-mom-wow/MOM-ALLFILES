@@ -151,11 +151,105 @@ def _looks_like_venue_site(url: str, venue_name: str) -> bool:
     return any(t in host for t in tokens)
 
 
+_LINKEDIN_PROFILE_RE = re.compile(
+    r"https?://(?:[a-z]{2}\.)?(?:www\.)?linkedin\.com/in/[\w%\-\.]+",
+    re.IGNORECASE,
+)
+
+
+def _name_tokens(name: str) -> list[str]:
+    """First/last name tokens, ≥3 chars, lowercased — used to filter out
+    LinkedIn URLs that hit a different person."""
+    return [t.lower() for t in re.split(r"[^A-Za-zÀ-ÿ]+", name or "") if len(t) >= 3]
+
+
+def _slug_of(url: str) -> str:
+    m = re.search(r"/in/([\w%\-\.]+)", url, flags=re.IGNORECASE)
+    return m.group(1).lower() if m else ""
+
+
+def _result_matches_person(url: str, title: str, snippet: str, name: str) -> bool:
+    """Decide whether a Tavily result actually points at our named person.
+
+    Tightened from the earlier "any token matches slug" to avoid hitting
+    different people who share a first name. Two acceptance paths:
+
+    1. The URL slug contains BOTH first and last name tokens (e.g. miguel-palma).
+    2. The slug contains at least the LAST name token AND the title or
+       snippet contains the full first+last name combo.
+    """
+    tokens = _name_tokens(name)
+    if len(tokens) < 2:
+        # Single-token name — fall back to slug-contains-token (rare).
+        slug = _slug_of(url)
+        return bool(tokens) and tokens[0] in slug
+
+    first, last = tokens[0], tokens[-1]
+    slug = _slug_of(url)
+    haystack = f"{title} {snippet}".lower()
+
+    if first in slug and last in slug:
+        return True
+    if last in slug and first in haystack and last in haystack:
+        return True
+    # Last-resort: profile URL slug doesn't carry the name (e.g. it's a hash),
+    # but the title clearly says it's them.
+    if first in haystack and last in haystack and "linkedin.com/in" in url.lower():
+        return True
+    return False
+
+
+def find_person_linkedin(
+    contact_name: str,
+    venue_name: Optional[str] = None,
+    city: str = "Lisbon",
+    *,
+    max_results: int = 5,
+) -> Optional[str]:
+    """Direct Tavily search for `<name>`'s LinkedIn profile.
+
+    Returns the first linkedin.com/in/<slug> URL whose slug contains a token
+    from the person's name. Tavily's `url` field is the source-of-truth here
+    (more reliable than snippet scraping). Returns None if nothing matches.
+    """
+    if not contact_name or not contact_name.strip():
+        return None
+
+    queries: list[str] = []
+    if venue_name:
+        queries.append(f'site:linkedin.com/in "{contact_name}" "{venue_name}"')
+        queries.append(f'"{contact_name}" "{venue_name}" linkedin')
+    queries.append(f'site:linkedin.com/in "{contact_name}" {city}')
+    queries.append(f'"{contact_name}" {city} linkedin')
+
+    seen: set[str] = set()
+    for q in queries:
+        for r in tavily_search(q, max_results=max_results):
+            url = (r.get("url") or "").strip()
+            title = (r.get("title") or "").strip()
+            snippet = (r.get("content") or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            # Sometimes Tavily returns linkedin.com/posts/... or /pulse/...
+            # Only accept canonical /in/ profile URLs.
+            m = _LINKEDIN_PROFILE_RE.search(url)
+            if not m:
+                m = _LINKEDIN_PROFILE_RE.search(snippet)
+            if not m:
+                continue
+            candidate = m.group(0)
+            if _result_matches_person(candidate, title, snippet, contact_name):
+                return candidate
+    return None
+
+
 def auto_find_contacts(
     venue_name: str,
     address: Optional[str] = None,
     *,
     known_website: Optional[str] = None,
+    contact_name: Optional[str] = None,
     max_tavily_results: int = 8,
 ) -> FoundContacts:
     """One-shot scrape: Tavily search → emails / LI / IG / phone / website."""
@@ -198,6 +292,18 @@ def auto_find_contacts(
 
     out.email = _pick_best_email(extract_emails(haystack), venue_domain)
     out.linkedin_url = extract_linkedin_url(haystack)
+
+    # If LinkedIn wasn't found in the venue's snippets but we know who the
+    # contact is, run a direct search for that person's profile.
+    if not out.linkedin_url and contact_name:
+        try:
+            city = _city_from_address(address)
+            person_li = find_person_linkedin(contact_name, venue_name=venue_name, city=city)
+            if person_li:
+                out.linkedin_url = person_li
+                out.sources.append(person_li)
+        except Exception:
+            pass
     ig_raw = extract_instagram_handle(haystack)
     if ig_raw:
         ig_clean = ig_raw.lstrip("@").split("/")[0]
