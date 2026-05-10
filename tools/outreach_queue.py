@@ -133,17 +133,58 @@ CONTACT_FIELDS: tuple[str, ...] = (
 )
 
 
-def update_contact_info(rep_id: str, deal_id: str, fields: dict) -> int:
+def update_contact_info(
+    rep_id: str,
+    deal_id: str,
+    fields: dict,
+    *,
+    verify_linkedin: bool = True,
+) -> dict:
     """Patch contact fields (email, linkedin_url, etc.) on every queued item
     for this deal across all queue files, plus the deal's sequence file.
 
-    Returns the total count of records updated. `fields` keys must be in
-    CONTACT_FIELDS; empty/None values are ignored so a partial update doesn't
-    wipe existing data.
+    Save-time gate: when `linkedin_url` is in the patch and `verify_linkedin`
+    is True (default), the URL is run through `verify_linkedin_url()` before
+    saving. Bad URLs are dropped from the patch and reported in the result —
+    the rest of the patch (email, phone, etc.) still applies.
+
+    Returns:
+        {
+          "files_updated": int,
+          "applied": [field, ...],
+          "rejected": {field: reason, ...},  # bad fields dropped from patch
+        }
+    `fields` keys must be in CONTACT_FIELDS; empty/None values are ignored.
     """
+    rejected: dict[str, str] = {}
     clean: dict = {k: v for k, v in fields.items() if k in CONTACT_FIELDS and v}
     if not clean or not deal_id:
-        return 0
+        return {"files_updated": 0, "applied": [], "rejected": rejected}
+
+    # ── Save-time gate: verify any LinkedIn URL before persisting ──────
+    if verify_linkedin and "linkedin_url" in clean:
+        try:
+            from tools.contact_finder import verify_linkedin_url
+            # Look up contact_name + venue_name from the latest queue or
+            # sequence record so we can verify against them.
+            contact_name, venue_name = _resolve_contact_and_venue(rep_id, deal_id)
+            ok, reason = verify_linkedin_url(
+                clean["linkedin_url"],
+                contact_name=contact_name,
+                venue_name=venue_name,
+            )
+            if not ok:
+                rejected["linkedin_url"] = reason
+                clean.pop("linkedin_url")
+                if not clean:
+                    return {
+                        "files_updated": 0,
+                        "applied": [],
+                        "rejected": rejected,
+                    }
+        except Exception as e:
+            # Don't block a save on a verifier crash; flag it and keep going.
+            rejected["linkedin_url_check_error"] = str(e)
 
     updated = 0
     # Walk every queue file for this rep — older queues may still hold pending
@@ -191,7 +232,38 @@ def update_contact_info(rep_id: str, deal_id: str, fields: dict) -> int:
         except Exception:
             pass
 
-    return updated
+    return {
+        "files_updated": updated,
+        "applied": list(clean.keys()),
+        "rejected": rejected,
+    }
+
+
+def _resolve_contact_and_venue(rep_id: str, deal_id: str) -> tuple[Optional[str], Optional[str]]:
+    """Best-effort lookup of contact_name + venue_name for a deal across the
+    queue files and the sequence file. Used by the LinkedIn save-time gate."""
+    contact_name: Optional[str] = None
+    venue_name: Optional[str] = None
+    for path in QUEUE_DIR.glob(f"{rep_id}_*.json"):
+        try:
+            items = json.loads(path.read_text())
+        except Exception:
+            continue
+        for it in items:
+            if it.get("deal_id") == deal_id:
+                contact_name = contact_name or it.get("contact_name")
+                venue_name = venue_name or it.get("venue_name")
+                if contact_name and venue_name:
+                    return contact_name, venue_name
+    seq_path = Path(__file__).parent.parent / "data" / "sequences" / f"{deal_id}.json"
+    if seq_path.exists():
+        try:
+            seq = json.loads(seq_path.read_text())
+            contact_name = contact_name or seq.get("contact_name")
+            venue_name = venue_name or seq.get("prospect_name")
+        except Exception:
+            pass
+    return contact_name, venue_name
 
 
 def format_queue_for_display(items: list[dict]) -> str:

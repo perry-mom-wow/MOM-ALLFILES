@@ -198,7 +198,15 @@ def main(execute: bool, rep_filter: Optional[str], max_calls: Optional[int],
             counters["no_match"] += 1
         else:
             try:
-                n = update_contact_info(rep_id, deal_id, patch)
+                save_result = update_contact_info(rep_id, deal_id, patch)
+                n = save_result.get("files_updated", 0)
+                rejected = save_result.get("rejected") or {}
+                applied_keys = save_result.get("applied", []) or []
+                if rejected:
+                    for field, reason in rejected.items():
+                        print(f"      ↳ rejected {field}: {reason}")
+                # Re-shape `patch` so the HubSpot push only includes accepted fields.
+                patch = {k: v for k, v in patch.items() if k in applied_keys}
             except Exception as e:
                 failures.append((venue, f"persist failed: {e}"))
                 print(f"{prefix}  ✗ persist failed: {e}")

@@ -858,30 +858,44 @@ def page_queue():
                 st.warning("Nothing to save — all fields are empty.")
             else:
                 # ── 1. Local save (queue files + sequence file) ──
+                # Includes the LinkedIn save-time verifier; rejected fields
+                # are surfaced separately so you know exactly what was dropped.
+                save_result = {"files_updated": 0, "applied": [], "rejected": {}}
                 try:
-                    n = update_contact_info(rep_id, deal_id, patch)
+                    save_result = update_contact_info(rep_id, deal_id, patch)
                 except Exception as e:
                     st.error(f"Local save failed: {e}")
-                    n = 0
+                n = save_result.get("files_updated", 0)
+                rejected = save_result.get("rejected") or {}
+                applied_patch = {k: v for k, v in patch.items() if k in save_result.get("applied", [])}
 
-                # ── 2. HubSpot push (fail-soft — local save still counts) ──
+                # Surface verifier rejections (e.g. wrong-LinkedIn URL).
+                for field, reason in rejected.items():
+                    st.error(
+                        f"⚠️  Rejected `{field}`: {reason}\n\n"
+                        "Other fields were still saved. Find the correct value "
+                        "and try again."
+                    )
+
+                # ── 2. HubSpot push (only push fields that survived the gate) ──
                 hs_msg: str = ""
                 hs_ok = False
-                try:
-                    from tools.hubspot_client import push_contact_info_to_deal
-                    res = push_contact_info_to_deal(deal_id, patch)
-                    if res.get("skipped"):
-                        hs_msg = f"HubSpot skipped — {res['skipped']}."
-                    elif res.get("updated"):
-                        hs_ok = True
-                        hs_msg = (
-                            f"HubSpot updated: {', '.join(res['updated'])}."
-                            + (f" Dropped (no such property): {', '.join(res['dropped'])}." if res.get("dropped") else "")
-                        )
-                    else:
-                        hs_msg = "HubSpot returned no updates."
-                except Exception as e:
-                    hs_msg = f"HubSpot push failed: {e} (local save was OK)."
+                if applied_patch:
+                    try:
+                        from tools.hubspot_client import push_contact_info_to_deal
+                        res = push_contact_info_to_deal(deal_id, applied_patch)
+                        if res.get("skipped"):
+                            hs_msg = f"HubSpot skipped — {res['skipped']}."
+                        elif res.get("updated"):
+                            hs_ok = True
+                            hs_msg = (
+                                f"HubSpot updated: {', '.join(res['updated'])}."
+                                + (f" Dropped (no such property): {', '.join(res['dropped'])}." if res.get("dropped") else "")
+                            )
+                        else:
+                            hs_msg = "HubSpot returned no updates."
+                    except Exception as e:
+                        hs_msg = f"HubSpot push failed: {e} (local save was OK)."
 
                 if n and hs_ok:
                     st.success(f"Saved locally ({n} file(s)) and pushed to HubSpot. {hs_msg}")

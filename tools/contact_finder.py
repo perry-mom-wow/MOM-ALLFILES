@@ -163,40 +163,159 @@ def _name_tokens(name: str) -> list[str]:
     return [t.lower() for t in re.split(r"[^A-Za-zÀ-ÿ]+", name or "") if len(t) >= 3]
 
 
+# Tokens that appear in many venue names and don't distinguish anything.
+# Stripped before computing distinctive venue tokens.
+_GENERIC_VENUE_TOKENS: frozenset[str] = frozenset({
+    "restaurante", "restaurant", "hotel", "cafe", "café", "bar", "club",
+    "lisbon", "lisboa", "lisbonne", "porto", "comporta", "cascais",
+    "the", "and", "and", "house", "group", "and", "lounge", "rooftop",
+})
+
+
+def _venue_tokens(venue_name: Optional[str]) -> list[str]:
+    """Return tokens from the venue name that are likely distinctive."""
+    if not venue_name:
+        return []
+    raw = re.split(r"[^A-Za-zÀ-ÿ]+", venue_name)
+    return [
+        t.lower() for t in raw
+        if len(t) >= 4 and t.lower() not in _GENERIC_VENUE_TOKENS
+    ]
+
+
 def _slug_of(url: str) -> str:
     m = re.search(r"/in/([\w%\-\.]+)", url, flags=re.IGNORECASE)
     return m.group(1).lower() if m else ""
 
 
-def _result_matches_person(url: str, title: str, snippet: str, name: str) -> bool:
-    """Decide whether a Tavily result actually points at our named person.
+def verify_linkedin_url(
+    url: str,
+    contact_name: Optional[str],
+    venue_name: Optional[str],
+    *,
+    city: Optional[str] = None,
+) -> tuple[bool, str]:
+    """Decide whether a LinkedIn URL we're about to save (or already saved)
+    plausibly belongs to `contact_name` at `venue_name`.
 
-    Tightened from the earlier "any token matches slug" to avoid hitting
-    different people who share a first name. Two acceptance paths:
+    Two-stage check:
 
-    1. The URL slug contains BOTH first and last name tokens (e.g. miguel-palma).
-    2. The slug contains at least the LAST name token AND the title or
-       snippet contains the full first+last name combo.
+    1. SLUG STAGE (cheap, no API call):
+       The URL slug must contain BOTH first AND last name tokens (or the
+       single token if the contact name is one word). This eliminates
+       obvious mismatches without burning a Tavily call.
+
+    2. VENUE STAGE (API call, only when slug passes):
+       Re-runs find_person_linkedin against the same (contact_name, venue)
+       pair under the strict matcher. If the fresh search returns:
+         - the same URL → verified (high confidence).
+         - a different URL → reject (we trust strict-match more than the
+           original save, which may have been made under the looser rule).
+         - None → reject (no current evidence the URL belongs to this
+           person at this venue).
+
+    Returns (ok, reason).
+    """
+    if not url or "linkedin.com/in" not in url.lower():
+        return False, "Not a LinkedIn /in/ URL."
+
+    slug = _slug_of(url)
+    if not slug:
+        return False, "Could not parse profile slug from URL."
+
+    tokens = _name_tokens(contact_name or "")
+    if len(tokens) >= 2:
+        first, last = tokens[0], tokens[-1]
+        if not (first in slug and last in slug):
+            return False, (
+                f"Slug '{slug}' is missing first or last name from "
+                f"'{contact_name}' (need both, found "
+                f"first={first in slug} last={last in slug})."
+            )
+    elif tokens:
+        if tokens[0] not in slug:
+            return False, f"Slug '{slug}' is missing '{tokens[0]}'."
+    else:
+        # No contact name to verify against — fail closed; nudge caller to
+        # supply one before saving a LinkedIn URL.
+        return False, "No contact_name provided — cannot verify LinkedIn URL."
+
+    # Stage 2: confirm the result actually associates with this venue.
+    # Re-run the strict finder with the same inputs.
+    try:
+        fresh = find_person_linkedin(
+            contact_name or "",
+            venue_name=venue_name,
+            city=city,
+        )
+    except Exception as e:
+        # Network blip — be lenient: slug already matched, accept with caveat.
+        return True, f"Slug matched; venue check skipped ({e})."
+
+    if fresh and fresh.lower().rstrip("/") == url.lower().rstrip("/"):
+        return True, "Verified by fresh search (URL matches)."
+    if not fresh:
+        return False, (
+            f"Fresh search for '{contact_name}' at '{venue_name}' returned no "
+            f"result — saved URL cannot be confirmed against this venue."
+        )
+    return False, (
+        f"Fresh search returned a different URL ({fresh}). The saved URL "
+        f"likely belonged to a different person of the same name."
+    )
+
+
+def _result_matches_person(
+    url: str,
+    title: str,
+    snippet: str,
+    name: str,
+    *,
+    venue_name: Optional[str] = None,
+) -> bool:
+    """Decide whether a Tavily result actually points at our named person
+    AND, when a venue is known, that this person is associated with that
+    specific venue (not a same-named person elsewhere).
+
+    Acceptance criteria:
+      A. NAME MATCH (always required):
+         - URL slug contains both first AND last name tokens, OR
+         - slug contains the last name AND the result title/snippet contains
+           both first and last name.
+      B. VENUE MATCH (required only when venue_name has distinctive tokens):
+         - title OR snippet contains at least one distinctive venue token
+           (≥4 chars, not in the generic stop-list).
+
+    The venue-match check is what stops "Miguel Palma at Herdade da Comporta"
+    from being returned for "Miguel Palma at Restaurante Via Graça". When the
+    venue name is generic enough that no distinctive tokens survive the
+    stop-list (e.g. just "Restaurante"), we fall back to name-match-only and
+    accept the risk.
     """
     tokens = _name_tokens(name)
     if len(tokens) < 2:
-        # Single-token name — fall back to slug-contains-token (rare).
         slug = _slug_of(url)
-        return bool(tokens) and tokens[0] in slug
+        if not (tokens and tokens[0] in slug):
+            return False
+    else:
+        first, last = tokens[0], tokens[-1]
+        slug = _slug_of(url)
+        haystack_name = f"{title} {snippet}".lower()
+        name_match = (
+            (first in slug and last in slug)
+            or (last in slug and first in haystack_name and last in haystack_name)
+            or (first in haystack_name and last in haystack_name and "linkedin.com/in" in url.lower())
+        )
+        if not name_match:
+            return False
 
-    first, last = tokens[0], tokens[-1]
-    slug = _slug_of(url)
-    haystack = f"{title} {snippet}".lower()
+    venue_toks = _venue_tokens(venue_name)
+    if not venue_toks:
+        # Venue name has no distinctive tokens (or none provided) — accept on name alone.
+        return True
 
-    if first in slug and last in slug:
-        return True
-    if last in slug and first in haystack and last in haystack:
-        return True
-    # Last-resort: profile URL slug doesn't carry the name (e.g. it's a hash),
-    # but the title clearly says it's them.
-    if first in haystack and last in haystack and "linkedin.com/in" in url.lower():
-        return True
-    return False
+    haystack_full = f"{title} {snippet}".lower()
+    return any(tok in haystack_full for tok in venue_toks)
 
 
 def find_person_linkedin(
@@ -239,7 +358,9 @@ def find_person_linkedin(
             if not m:
                 continue
             candidate = m.group(0)
-            if _result_matches_person(candidate, title, snippet, contact_name):
+            if _result_matches_person(
+                candidate, title, snippet, contact_name, venue_name=venue_name,
+            ):
                 return candidate
     return None
 
