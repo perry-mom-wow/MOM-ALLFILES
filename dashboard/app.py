@@ -639,38 +639,92 @@ def page_queue():
     deal_id = item.get("deal_id", "")
     contact_id = item.get("contact_id", "")
 
-    # ── Auto-swap to email when there is no LinkedIn profile ─────────────────
-    # The queue holds LinkedIn-shaped messages by default. If we have no
-    # LinkedIn URL on the prospect, that copy is unsendable — flip the card
-    # to show the email opener from the sequence file (subject + body) so
-    # Perry can paste the email instead. He can revert the swap by adding a
-    # LinkedIn URL via the editor below.
-    swapped_to_email = False
-    email_subject: str = ""
-    if (not linkedin_url) and channel.lower() == "linkedin" and deal_id:
+    # ── Build channel options from the sequence file ─────────────────────────
+    # The queue item carries one body (typically the LinkedIn opener), but the
+    # sequence file at data/sequences/<deal_id>.json holds BOTH the email
+    # opener (subject + body) AND the LinkedIn opener. We render whichever
+    # channels we can actually act on as tabs, defaulting to email when both
+    # are available — emails convert better and don't need the rep to be on
+    # LinkedIn to send.
+    seq_email_opener: dict = {}
+    seq_linkedin_opener: dict = {}
+    if deal_id:
         seq_path = ROOT / "data" / "sequences" / f"{deal_id}.json"
         if seq_path.exists():
             try:
                 seq_data = json.loads(seq_path.read_text())
-                email_opener = (seq_data.get("messages") or {}).get("email_opener") or {}
-                if email_opener.get("body"):
-                    swapped_to_email = True
-                    msg_type = "Email Opener (LinkedIn unavailable)"
-                    channel = "Email"
-                    message = email_opener["body"]
-                    email_subject = email_opener.get("subject") or f"Quick note from MOM about {venue}"
-                    # If the queue item didn't have an email but the sequence
-                    # file does, surface it for the contact buttons.
-                    if not email and seq_data.get("contact_email"):
-                        email = seq_data["contact_email"]
+                msgs = seq_data.get("messages") or {}
+                seq_email_opener = msgs.get("email_opener") or {}
+                seq_linkedin_opener = (
+                    msgs.get("linkedin_opener")
+                    or msgs.get("linkedin_connection")
+                    or {}
+                )
+                # Surface sequence email if the queue item didn't have one.
+                if not email and seq_data.get("contact_email"):
+                    email = seq_data["contact_email"]
             except Exception:
                 pass
+
+    channel_options: list[dict] = []
+
+    # Email is available when we both have an address AND a generated email body.
+    if email and seq_email_opener.get("body"):
+        channel_options.append({
+            "key": "email",
+            "label": "📧 Email",
+            "subject": seq_email_opener.get("subject")
+                or f"Quick note from MOM about {venue}",
+            "body": seq_email_opener["body"],
+        })
+
+    # LinkedIn is available when we have a profile URL AND a body to send.
+    linkedin_body = (
+        seq_linkedin_opener.get("body")
+        or (message if (channel or "").lower() == "linkedin" else "")
+    )
+    if linkedin_url and linkedin_body:
+        channel_options.append({
+            "key": "linkedin",
+            "label": "💼 LinkedIn",
+            "subject": None,
+            "body": linkedin_body,
+        })
+
+    # Fallback: no email, no LinkedIn URL — still show whatever we've got.
+    if not channel_options:
+        if linkedin_body:
+            channel_options.append({
+                "key": "linkedin_no_url",
+                "label": "💼 LinkedIn (no profile URL on file)",
+                "subject": None,
+                "body": linkedin_body,
+            })
+        elif message:
+            channel_options.append({
+                "key": "fallback",
+                "label": f"📨 {channel}",
+                "subject": None,
+                "body": message,
+            })
+
+    # Caption hints for the meta line.
+    swapped_to_email = (
+        len(channel_options) == 1
+        and channel_options[0]["key"] == "email"
+        and (channel or "").lower() == "linkedin"
+    )
 
     st.subheader(venue)
     if swapped_to_email:
         st.caption(
             "📧 No LinkedIn profile on file — showing **email opener** instead. "
             "Add a LinkedIn URL below to switch back."
+        )
+    elif len(channel_options) > 1:
+        st.caption(
+            "Both channels available below — pick whichever fits. Email tab is "
+            "the default since email replies convert higher."
         )
     meta_parts = [msg_type, channel]
     if contact_name:
@@ -909,14 +963,25 @@ def page_queue():
 
     st.divider()
 
-    # Message — st.code gives a built-in copy button
-    if swapped_to_email and email_subject:
-        st.markdown("**Subject** — click the copy icon top-right to copy")
-        st.code(email_subject, language=None, wrap_lines=True)
+    # Message — st.code gives a built-in copy button.
+    # If both channels are available, render as tabs so Perry can switch
+    # between the email copy (subject + body) and the LinkedIn copy.
+    def _render_channel(opt: dict) -> None:
+        if opt.get("subject"):
+            st.markdown("**Subject** — click the copy icon top-right to copy")
+            st.code(opt["subject"], language=None, wrap_lines=True)
         st.markdown("**Body** — click the copy icon top-right to copy")
+        st.code(opt["body"] or "", language=None, wrap_lines=True)
+
+    if len(channel_options) > 1:
+        tabs = st.tabs([o["label"] for o in channel_options])
+        for tab, opt in zip(tabs, channel_options):
+            with tab:
+                _render_channel(opt)
+    elif channel_options:
+        _render_channel(channel_options[0])
     else:
-        st.markdown("**Message** — click the copy icon top-right to copy")
-    st.code(message, language=None, wrap_lines=True)
+        st.warning("No copy available for this prospect — re-run the writer agent.")
 
     st.divider()
 
