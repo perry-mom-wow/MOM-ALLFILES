@@ -36,6 +36,8 @@ BANNED_PHRASES: tuple[str, ...] = (
     "plays a significant role",
     # AI-tells from agents/writer.py BANNED set, kept consistent
     "i hope this finds you well",
+    "i hope you're well",
+    "i hope you are well",
     "in today's fast-paced world",
     "in today's landscape",
     "circle back",
@@ -47,10 +49,45 @@ BANNED_PHRASES: tuple[str, ...] = (
     "ecosystem",
     "exciting opportunity",
     "quick question",
+    "i wanted to reach out",
+    "my name is",
     # Padding openers
     "it's important to note",
     "it's worth mentioning",
     "one of the most important things",
+)
+
+# Spam-trigger words (3+ in body = 67% likelier to land in spam per Folderly).
+# Banned in COLD archetype only — followups can use "free" in context like
+# "free 2-pack drop-off" etc, but cold openers must avoid these entirely.
+COLD_SPAM_TRIGGERS: tuple[str, ...] = (
+    "free",
+    "guaranteed",
+    "act now",
+    "limited time",
+    "risk-free",
+    "risk free",
+    "urgent",
+    "100%",
+    "cash",
+    "winner",
+    "earn extra",
+    "no obligation",
+)
+
+# Calendar-link domains banned on first touch — Gong data: calendar links on
+# cold reduce primary-inbox placement and depress reply rate. Save for touch
+# #2-3 once they've engaged.
+COLD_CALENDAR_LINK_PATTERNS: tuple[str, ...] = (
+    "calendly.com",
+    "cal.com",
+    "meetings.hubspot.com",
+    "savvycal.com",
+    "scheduleonce",
+    "x.ai/",  # x.ai calendar bot
+    "outlook.com/owa",
+    "calendar.google.com",
+    "calendar.app.google",
 )
 
 NEGATIVE_PARALLELISM_PATTERNS: tuple[str, ...] = (
@@ -194,23 +231,30 @@ def _check_padding_openers(body: str) -> list[Violation]:
 
 
 # ── Cold-outreach extra rules ──────────────────────────────────────────────────
+# Canonical spec: Notion Wiki "📨 Cold Email Construction Rules" (2026-05-12).
+# Empirical basis: Boomerang 40M / Backlinko 12M / Gong 85M / Belkins 16.5M.
 
 def _check_cold_word_count(body: str) -> list[Violation]:
+    """Cold body: 50-100 words. Target 50-75. Hard fail outside [50, 100]."""
     wc = _word_count(body)
-    if wc < 75 or wc > 150:
+    if wc < 50 or wc > 100:
         return [Violation(
             "cold_word_count",
-            f"Cold outreach word count {wc}; target 75–150.",
+            f"Cold body word count {wc}; must be 50-100 (target 50-75). "
+            f"Past 100 words reply rate drops sharply.",
         )]
     return []
 
 
 def _check_cold_permission(body: str) -> list[Violation]:
+    """SOFT — permission language is encouraged but not required for touch #1."""
     lower = body.lower()
     if not any(p in lower for p in PERMISSION_PHRASES):
         return [Violation(
-            "cold_permission_required",
-            "Cold draft must include permission language ('no pressure', 'if not', etc.).",
+            "cold_permission_encouraged",
+            "No permission language found ('no pressure', 'if not', etc.). "
+            "Recommended for the P.S. line but not required.",
+            severity="soft",
         )]
     return []
 
@@ -230,10 +274,63 @@ def _check_cold_banned_openers(body: str) -> list[Violation]:
 def _check_cold_subject(subject: str | None) -> list[Violation]:
     if subject is None:
         return []
-    if _word_count(subject) > 5:
-        return [Violation(
+    out: list[Violation] = []
+    wc = _word_count(subject)
+    if wc < 1 or wc > 5:
+        out.append(Violation(
             "cold_subject_length",
-            f"Subject '{subject}' has >5 words.",
+            f"Subject '{subject}' has {wc} words; must be 1-5.",
+        ))
+    # Lowercase rule — Gong: lowercase outperforms title-case.
+    # Allow proper nouns: subject must equal its lowercase form for at least
+    # 80% of its alphabetic characters.
+    alpha = [c for c in subject if c.isalpha()]
+    if alpha:
+        lower_ratio = sum(1 for c in alpha if c.islower()) / len(alpha)
+        if lower_ratio < 0.85:
+            out.append(Violation(
+                "cold_subject_case",
+                f"Subject '{subject}' has too much title/upper case; "
+                f"cold subjects must be ≥85% lowercase. Found {lower_ratio:.0%}.",
+            ))
+    return out
+
+
+def _check_cold_spam_triggers(body: str) -> list[Violation]:
+    """Folderly: 3+ promo trigger words → 67% likelier to land in spam."""
+    lower = body.lower()
+    out: list[Violation] = []
+    for trigger in COLD_SPAM_TRIGGERS:
+        # Word-boundary check so 'free' doesn't match 'freedom', 'cash' not 'cashews'.
+        if re.search(rf"\b{re.escape(trigger)}\b", lower):
+            out.append(Violation(
+                "cold_spam_trigger",
+                f"Contains spam-trigger word '{trigger}'.",
+            ))
+    return out
+
+
+def _check_cold_no_calendar_link(body: str) -> list[Violation]:
+    """Calendar links depress reply rate on cold (Gong). Save for touch #2-3."""
+    lower = body.lower()
+    out: list[Violation] = []
+    for pattern in COLD_CALENDAR_LINK_PATTERNS:
+        if pattern in lower:
+            out.append(Violation(
+                "cold_calendar_link",
+                f"Calendar link ('{pattern}') is banned on cold touch #1. "
+                f"Use an interest-CTA question instead.",
+            ))
+    return out
+
+
+def _check_cold_max_one_link(body: str) -> list[Violation]:
+    """Cold touch #1: max one http(s):// link. Multiple links → spam classifier."""
+    links = re.findall(r"https?://\S+", body)
+    if len(links) > 1:
+        return [Violation(
+            "cold_max_one_link",
+            f"Found {len(links)} links; cold touch #1 allows at most 1.",
         )]
     return []
 
@@ -259,9 +356,12 @@ def validate(
 
     if archetype == "cold":
         violations.extend(_check_cold_word_count(body))
-        violations.extend(_check_cold_permission(body))
         violations.extend(_check_cold_banned_openers(body))
         violations.extend(_check_cold_subject(subject))
+        violations.extend(_check_cold_spam_triggers(body))
+        violations.extend(_check_cold_no_calendar_link(body))
+        violations.extend(_check_cold_max_one_link(body))
+        violations.extend(_check_cold_permission(body))  # soft check, surfaces as warning only
 
     hard = [v for v in violations if v.severity == "hard"]
     return ValidationResult(passed=not hard, violations=violations, archetype=archetype)
