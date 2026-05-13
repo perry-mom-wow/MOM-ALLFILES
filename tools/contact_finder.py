@@ -188,6 +188,166 @@ def _slug_of(url: str) -> str:
     return m.group(1).lower() if m else ""
 
 
+_PLACEHOLDER_LOCAL_RE = re.compile(
+    r"^(?:"
+    r"john[._-]?doe|jane[._-]?doe|firstname[._-]?lastname|firstname|lastname|"
+    r"name|fullname|example|test|placeholder|user|email|you|me|"
+    r"your[._-]?email|youremail|youraddress|sample"
+    r")(?:[._-]|$|\d|@)",
+    re.IGNORECASE,
+)
+
+_FREEMAIL_DOMAINS: frozenset[str] = frozenset({
+    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com",
+    "hotmail.co.uk", "hotmail.fr", "hotmail.es", "live.com",
+    "yahoo.com", "yahoo.co.uk", "yahoo.es", "ymail.com",
+    "icloud.com", "me.com", "mac.com",
+    "proton.me", "protonmail.com",
+    "msn.com", "aol.com", "gmx.com", "gmx.de", "zoho.com",
+})
+
+_GENERIC_LOCAL_PARTS: frozenset[str] = frozenset({
+    "info", "reservas", "reservations", "events", "eventos",
+    "marketing", "geral", "general", "hello", "contact", "contacto",
+    "contacts", "office", "admin", "front", "frontdesk", "frontoffice",
+    "concierge", "stay", "booking", "bookings", "sales", "comercial",
+})
+
+
+def verify_email_address(
+    email: str,
+    venue_name: Optional[str] = None,
+    contact_name: Optional[str] = None,
+    website: Optional[str] = None,
+) -> tuple[bool, str, str]:
+    """Decide whether an email address is sendable.
+
+    Returns (ok, severity, reason).
+      severity: "hard" — clearly bogus, never send.
+                "soft" — suspicious, surface for review but don't auto-clear.
+                "ok"   — passes all checks.
+
+    Hard fails (rejected on save, cleared by audit):
+      - Placeholder local parts: john.doe@..., name@..., your.email@..., etc.
+      - Local part is generic (info@, reservas@) on a domain unrelated to the venue.
+      - Personal-shaped local on a domain that has no relation to the venue.
+
+    Soft flags (kept, marked for review):
+      - Personal email on a freemail provider (gmail/hotmail/outlook) whose
+        local part doesn't contain a token from the contact_name.
+      - Generic email (info@/reservas@) when contact_name is known and was
+        likely a specific person we should reach instead.
+    """
+    if not email or "@" not in email:
+        return False, "hard", "Not a valid email format."
+
+    local, _, domain = email.lower().strip().partition("@")
+    local = local.strip()
+    domain = domain.strip()
+    if not local or not domain or "." not in domain:
+        return False, "hard", "Malformed email."
+
+    # ── 1. Placeholder local-part ──
+    if _PLACEHOLDER_LOCAL_RE.match(local):
+        return False, "hard", (
+            f"Local part '{local}' is a placeholder (john.doe, name, example, etc.) — "
+            f"this email was never real, just a template guess."
+        )
+
+    is_generic = local in _GENERIC_LOCAL_PARTS
+    is_freemail = domain in _FREEMAIL_DOMAINS
+
+    # Helper: distinctive venue tokens
+    venue_toks = _venue_tokens(venue_name) if venue_name else []
+    venue_domain = _domain_of(website) if website else None
+    venue_domain_root = venue_domain.split(":")[0] if venue_domain else None
+    if venue_domain_root and venue_domain_root.startswith("www."):
+        venue_domain_root = venue_domain_root[4:]
+
+    # ── 2. Domain–venue correspondence ──
+    domain_matches_website = bool(
+        venue_domain_root and (
+            domain == venue_domain_root or domain.endswith("." + venue_domain_root)
+        )
+    )
+    domain_contains_venue_token = bool(
+        venue_toks and any(t in domain for t in venue_toks)
+    )
+    if not is_freemail and not domain_matches_website and not domain_contains_venue_token:
+        # Domain looks unrelated to the venue.
+        # HARD only when venue has distinctive tokens but the domain matches
+        # none of them — that's a clear scrape-from-wrong-page signal.
+        # SOFT when venue tokens are too generic to verify (short name, no
+        # distinctive words like "Sal Restaurant Comporta" → no 4-char tokens
+        # survive after stop-list filtering).
+        if venue_toks:
+            return False, "hard", (
+                f"Email domain '{domain}' has no obvious link to "
+                f"'{venue_name}' (expected one of: {', '.join(venue_toks[:3])}). "
+                f"Likely scraped from an unrelated page."
+            )
+        elif venue_name:
+            return False, "soft", (
+                f"Email domain '{domain}' doesn't obviously match '{venue_name}' "
+                f"but the venue name has no distinctive tokens to verify against. "
+                f"Eyeball this before sending."
+            )
+
+    # ── 3. Contact-name correspondence (only for personal-shaped locals) ──
+    # Loosened: name mismatches on the venue's RIGHT domain are SOFT, not
+    # HARD — the email still reaches the right org, it's just possibly a
+    # different person (colleague, assistant, sales desk, etc.). Only HARD
+    # when the name mismatch is on a *freemail* provider, where there's no
+    # org affiliation we can trust.
+    if not is_generic and contact_name:
+        contact_tokens = _name_tokens(contact_name)
+        if contact_tokens:
+            last = contact_tokens[-1]
+            first = contact_tokens[0]
+            local_match = (last in local) or (first in local) or (
+                len(first) >= 2 and first[0] in local and last in local
+            )
+            # Local also "matches" if it contains a distinctive venue token —
+            # treat that as a venue-level inbox (e.g. "sheraton.lisboa@..." or
+            # "altis.grand@altishotels.com"), not a wrong person.
+            local_is_venue_inbox = bool(
+                venue_toks and any(t in local for t in venue_toks)
+            )
+            if not local_match and not local_is_venue_inbox:
+                if is_freemail:
+                    return False, "soft", (
+                        f"Personal '{email}' on a freemail provider doesn't "
+                        f"match contact '{contact_name}'. Could be a colleague "
+                        f"or wrong person — verify before sending."
+                    )
+                return False, "soft", (
+                    f"Local '{local}' doesn't match contact '{contact_name}' "
+                    f"but the domain '{domain}' is the venue's real org. "
+                    f"Could be a colleague — verify before personalising."
+                )
+
+    # ── 4. Freemail accepted when contact-name matches local (or no contact known) ──
+    if is_freemail and contact_name and not is_generic:
+        # We've already covered the mismatch case above; here we accept.
+        return True, "ok", f"Freemail address but local matches '{contact_name}'."
+
+    if is_freemail:
+        return True, "soft", (
+            f"Freemail address ({domain}) — flag for caution. "
+            f"Verify it actually belongs to this venue."
+        )
+
+    if is_generic and domain_matches_website:
+        return True, "ok", "Generic inbox on the venue's own domain."
+
+    if is_generic and domain_contains_venue_token:
+        return True, "soft", (
+            f"Generic inbox on '{domain}'. If you know a specific person, prefer them."
+        )
+
+    return True, "ok", "Passes all checks."
+
+
 def verify_linkedin_url(
     url: str,
     contact_name: Optional[str],

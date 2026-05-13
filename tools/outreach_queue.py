@@ -162,12 +162,10 @@ def update_contact_info(
         return {"files_updated": 0, "applied": [], "rejected": rejected}
 
     # ── Save-time gate: verify any LinkedIn URL before persisting ──────
+    contact_name, venue_name = _resolve_contact_and_venue(rep_id, deal_id)
     if verify_linkedin and "linkedin_url" in clean:
         try:
             from tools.contact_finder import verify_linkedin_url
-            # Look up contact_name + venue_name from the latest queue or
-            # sequence record so we can verify against them.
-            contact_name, venue_name = _resolve_contact_and_venue(rep_id, deal_id)
             ok, reason = verify_linkedin_url(
                 clean["linkedin_url"],
                 contact_name=contact_name,
@@ -185,6 +183,31 @@ def update_contact_info(
         except Exception as e:
             # Don't block a save on a verifier crash; flag it and keep going.
             rejected["linkedin_url_check_error"] = str(e)
+
+    # ── Save-time gate: verify any email address before persisting ──────
+    if "email" in clean:
+        try:
+            from tools.contact_finder import verify_email_address
+            ok, severity, reason = verify_email_address(
+                clean["email"],
+                venue_name=venue_name,
+                contact_name=contact_name,
+                website=_resolve_website(deal_id),
+            )
+            if not ok and severity == "hard":
+                rejected["email"] = reason
+                clean.pop("email")
+                if not clean:
+                    return {
+                        "files_updated": 0,
+                        "applied": [],
+                        "rejected": rejected,
+                    }
+            elif severity == "soft":
+                # Save but flag in the response — UI can warn the user.
+                rejected["email_soft_warning"] = reason
+        except Exception as e:
+            rejected["email_check_error"] = str(e)
 
     updated = 0
     # Walk every queue file for this rep — older queues may still hold pending
@@ -237,6 +260,18 @@ def update_contact_info(
         "applied": list(clean.keys()),
         "rejected": rejected,
     }
+
+
+def _resolve_website(deal_id: str) -> Optional[str]:
+    """Best-effort lookup of the venue's website for the email verifier."""
+    seq_path = Path(__file__).parent.parent / "data" / "sequences" / f"{deal_id}.json"
+    if seq_path.exists():
+        try:
+            seq = json.loads(seq_path.read_text())
+            return seq.get("website") or None
+        except Exception:
+            pass
+    return None
 
 
 def _resolve_contact_and_venue(rep_id: str, deal_id: str) -> tuple[Optional[str], Optional[str]]:
