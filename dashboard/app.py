@@ -15,6 +15,37 @@ from datetime import date, datetime
 import streamlit as st
 
 
+def _render_hubspot_error(exc: Exception) -> None:
+    """Friendly banner for HubSpot connection failures. Detects 401 (unauthorised)
+    and 403 (forbidden) specifically so the rep sees an actionable cause instead
+    of a wall of HTTP header text. Full traceback is hidden in an expander."""
+    msg = str(exc)
+    is_401 = "401" in msg or "Unauthorized" in msg or "auth-failure" in msg
+    is_403 = "403" in msg or "Forbidden" in msg
+    if is_401:
+        st.error(
+            "🔑 **HubSpot authentication failed.** Your `HUBSPOT_API_KEY` "
+            "is missing or invalid in this environment."
+        )
+        st.markdown(
+            "**Fix on Streamlit Cloud:** open the app → ⋮ menu → **Settings** → "
+            "**Secrets** → paste:\n\n"
+            "```toml\nHUBSPOT_API_KEY = \"pat-eu1-xxxx...\"\n```\n\n"
+            "Save, then the app re-runs and HubSpot data appears here. The token "
+            "comes from HubSpot → Settings → Integrations → Private apps."
+        )
+    elif is_403:
+        st.error(
+            "🚫 **HubSpot returned 403 Forbidden.** Your key is valid but the "
+            "private app is missing scopes. Add the CRM scopes (deals, contacts, "
+            "companies, owners — read + write) and re-issue the token."
+        )
+    else:
+        st.error(f"⚠️  Could not connect to HubSpot: {type(exc).__name__}")
+    with st.expander("Show technical detail (for debugging)"):
+        st.code(msg[:2000], language=None)
+
+
 def _format_eu_date(raw) -> str:
     """Format an ISO date/datetime string as DD.MM.YYYY for display.
 
@@ -215,7 +246,7 @@ LOGO_PATH = _LOGO
 
 def sidebar():
     if LOGO_PATH.exists():
-        st.sidebar.image(str(LOGO_PATH), use_container_width=True)
+        st.sidebar.image(str(LOGO_PATH), width="stretch")
     else:
         st.sidebar.markdown(f"<h1 style='text-align:center;color:{CREAM};'>MOM</h1>", unsafe_allow_html=True)
     st.sidebar.markdown(
@@ -249,14 +280,14 @@ def page_pipeline():
         st.caption("Live data from HubSpot")
     with batch_col:
         st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
-        if st.button("📨 Send my batch", help="Auto-send today's cold-email batch (preview first)", use_container_width=True):
+        if st.button("📨 Send my batch", help="Auto-send today's cold-email batch (preview first)", width="stretch"):
             with st.spinner("Building today's batch..."):
                 from agents.auto_send import _candidates_for_today
                 st.session_state["batch_items"] = _candidates_for_today()
                 st.session_state["batch_skip"] = set()
     with clean_col:
         st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
-        if st.button("🧹 Clean CRM", help="Find and remove junk + duplicate deals", use_container_width=True):
+        if st.button("🧹 Clean CRM", help="Find and remove junk + duplicate deals", width="stretch"):
             with st.spinner("Scanning HubSpot..."):
                 try:
                     from agents.cleanup import cleanup
@@ -310,7 +341,7 @@ def page_pipeline():
 
                 send_col, cancel_col = st.columns([1, 1])
                 with send_col:
-                    if st.button(f"✉️ Send {len(included)} now", type="primary", disabled=not included, use_container_width=True):
+                    if st.button(f"✉️ Send {len(included)} now", type="primary", disabled=not included, width="stretch"):
                         with st.spinner("Sending..."):
                             from agents.auto_send import send_selected
                             result = send_selected(included)
@@ -323,7 +354,7 @@ def page_pipeline():
                         del st.session_state["batch_items"]
                         st.session_state.pop("batch_skip", None)
                 with cancel_col:
-                    if st.button("Cancel", use_container_width=True):
+                    if st.button("Cancel", width="stretch"):
                         del st.session_state["batch_items"]
                         st.session_state.pop("batch_skip", None)
                         st.rerun()
@@ -332,8 +363,8 @@ def page_pipeline():
         from tools import hubspot_client as hs
         deals = hs.get_all_deals()
     except Exception as e:
-        st.warning(f"Could not connect to HubSpot: {e}")
-        deals = []
+        _render_hubspot_error(e)
+        return
 
     if not deals:
         st.info("No deals in HubSpot yet. Run the agent to discover prospects.")
@@ -402,13 +433,13 @@ def page_pipeline():
         from agents.reporter import generate_report, _make_funnel_chart, _deals_to_df
         deal_df = _deals_to_df(deals)
         funnel_path = _make_funnel_chart(deal_df)
-        st.image(str(funnel_path), use_container_width=True)
+        st.image(str(funnel_path), width="stretch")
     except Exception as e:
         st.warning(f"Chart error: {e}")
 
     # Deals table
     st.subheader("All Deals")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
     st.divider()
     st.subheader("🛑 Mark a Deal as Replied")
@@ -505,11 +536,11 @@ def _render_conversation_nudges(rep_id: str) -> None:
                 # Channel buttons (only what we have).
                 if n.get("contact_email"):
                     st.link_button(f"✉️ {n['contact_email']}", f"mailto:{n['contact_email']}",
-                                   use_container_width=True)
+                                   width="stretch")
                 if n.get("linkedin_url"):
-                    st.link_button("💼 Open LinkedIn", n["linkedin_url"], use_container_width=True)
+                    st.link_button("💼 Open LinkedIn", n["linkedin_url"], width="stretch")
                 if n.get("phone"):
-                    st.link_button(f"📞 {n['phone']}", f"tel:{n['phone']}", use_container_width=True)
+                    st.link_button(f"📞 {n['phone']}", f"tel:{n['phone']}", width="stretch")
 
             # ── Draft response ───────────────────────────────────────────
             draft_key = f"nudge_draft_{deal_id}"
@@ -800,7 +831,7 @@ def page_queue():
             b["url"],
             type=b.get("type", "secondary"),
             help=b.get("help"),
-            use_container_width=True,
+            width="stretch",
         )
 
     # ── Inline editor: paste back contact info you found via search ──────────
@@ -838,7 +869,7 @@ def page_queue():
             "🔎 Auto-find",
             key=f"autofind_{deal_id}_{idx}",
             help="Run a web search and pre-fill any missing fields. You can still edit before saving.",
-            use_container_width=True,
+            width="stretch",
         ):
             from tools.contact_finder import auto_find_contacts
             with st.spinner(f"Searching for {venue}..."):
@@ -898,7 +929,7 @@ def page_queue():
             key=f"save_contact_{deal_id}_{idx}",
             type="primary",
             disabled=not deal_id,
-            use_container_width=True,
+            width="stretch",
         ):
             from tools.outreach_queue import update_contact_info
             patch = {
@@ -1001,7 +1032,7 @@ def page_queue():
 
     with action_cols[0]:
         sent_label = "✅  Sent — Next (track conversation)" if in_conversation else "✅  Sent — Next"
-        if st.button(sent_label, type="primary", use_container_width=True):
+        if st.button(sent_label, type="primary", width="stretch"):
             if deal_id:
                 if in_conversation:
                     # Already past cold-stage. Just record the outbound on the
@@ -1025,12 +1056,12 @@ def page_queue():
             st.rerun()
 
     with action_cols[1]:
-        if st.button("Skip", use_container_width=True):
+        if st.button("Skip", width="stretch"):
             st.session_state.queue_index = (idx + 1) % total
             st.rerun()
 
     with action_cols[2]:
-        with st.popover("⚙️  Status", use_container_width=True):
+        with st.popover("⚙️  Status", width="stretch"):
             st.markdown(f"**Update status for {venue}**")
             st.caption(
                 "🔄 Replied = ongoing conversation, nudge cadence kicks in (3/7/14/21/28d then 5w). "
@@ -1161,7 +1192,7 @@ def page_run_agent():
                         progress.progress((idx + 1) / len(prospects))
 
                     import pandas as pd
-                    st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(results), width="stretch", hide_index=True)
                     st.info(f"Check the Daily Queue for {rep_name}'s messages to send.")
                 except Exception as e:
                     st.error(f"Error: {e}")
@@ -1287,7 +1318,7 @@ def page_reports():
         cols = st.columns(2)
         for i, path in enumerate(report.get("chart_paths", [])):
             with cols[i % 2]:
-                st.image(str(path), use_container_width=True)
+                st.image(str(path), width="stretch")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -1335,7 +1366,7 @@ def page_inbound():
             key="inbound_upload",
         )
         if upload is not None:
-            st.image(upload, caption=upload.name, use_container_width=True)
+            st.image(upload, caption=upload.name, width="stretch")
             if st.button("🧠 Extract from image", type="primary", key="extract_image"):
                 with st.spinner("Reading the screenshot..."):
                     from brain.inbound_extractor import extract_from_image
@@ -1436,7 +1467,7 @@ def page_inbound():
             height=150,
         )
 
-        submit_edit = st.form_submit_button("💾 Save edits", use_container_width=True)
+        submit_edit = st.form_submit_button("💾 Save edits", width="stretch")
         if submit_edit:
             lead_dict.update({
                 "venue_name": venue_name, "contact_name": contact_name or None,
@@ -1497,7 +1528,7 @@ def page_inbound():
 
     can_commit = bool(lead_dict.get("venue_name"))
     commit_label = "📨 Add to Pipeline" + (" + queue draft" if response_key in st.session_state else "")
-    if commit_col.button(commit_label, type="primary", disabled=not can_commit, use_container_width=True):
+    if commit_col.button(commit_label, type="primary", disabled=not can_commit, width="stretch"):
         with st.spinner("Onboarding inbound lead..."):
             try:
                 from brain.inbound_extractor import ExtractedLead
@@ -1544,7 +1575,7 @@ def page_inbound():
             except Exception as e:
                 st.error(f"Onboard failed: {e}")
 
-    if discard_col.button("🗑  Discard", use_container_width=True):
+    if discard_col.button("🗑  Discard", width="stretch"):
         st.session_state.pop(extracted_key, None)
         st.session_state.pop(response_key, None)
         st.session_state.pop("inbound_raw_text", None)
