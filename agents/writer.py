@@ -222,14 +222,110 @@ def _build_rep_context(rep: dict) -> str:
     )
 
 
-def generate_sequence(profile: ProspectProfile, rep_id: str) -> OutreachSequence:
-    """Generate the full outreach sequence for a prospect."""
+# ── Language detection ────────────────────────────────────────────────────────
+# Reps can declare a `language_strategy` in reps.yaml:
+#   "english"   — always EN (default; what Perry does today)
+#   "portuguese"— always PT
+#   "pt_first"  — PT for PT-based prospects, EN otherwise (Vasco's setup)
+#   "en_first"  — EN for everyone except prospects with clear PT signals
+
+_PT_LOCATION_TOKENS = (
+    "lisboa", "lisbon", "porto", "cascais", "sintra", "estoril", "caparica",
+    "algarve", "faro", "aveiro", "braga", "évora", "evora", "comporta",
+    "óbidos", "obidos", "azores", "açores", "acores", "madeira", "portugal",
+    "alentejo", "douro", "guimarães", "guimaraes", "setúbal", "setubal",
+)
+
+
+def _prospect_is_portuguese(profile: ProspectProfile) -> bool:
+    """Heuristic: is the prospect based in Portugal? Uses address + website TLD."""
+    address = (profile.address or "").lower()
+    website = (profile.website or "").lower()
+    if any(t in address for t in _PT_LOCATION_TOKENS):
+        return True
+    if website.endswith(".pt") or ".pt/" in website or website.endswith(".pt/"):
+        return True
+    return False
+
+
+def _detect_target_language(profile: ProspectProfile, rep: dict) -> str:
+    """Return 'en' or 'pt' based on rep preference + prospect signals."""
+    strategy = (rep.get("language_strategy") or "english").lower()
+    if strategy == "english":
+        return "en"
+    if strategy == "portuguese":
+        return "pt"
+    is_pt = _prospect_is_portuguese(profile)
+    if strategy == "pt_first":
+        return "pt" if is_pt else "en"
+    if strategy == "en_first":
+        return "pt" if is_pt else "en"  # same outcome but kept for symmetry
+    return "en"
+
+
+_PT_LANGUAGE_DIRECTIVE = """
+═══════════════════════════════════════════════════════════════
+LANGUAGE DIRECTIVE — WRITE IN PORTUGUESE
+═══════════════════════════════════════════════════════════════
+
+This prospect is Portuguese. Write `email_subject`, `email_opener`,
+`linkedin_connection`, `linkedin_opener`, and all follow-ups in
+European Portuguese (not Brazilian).
+
+ALL the cold-email rules still apply, just expressed in Portuguese:
+- email_opener: 50-75 words (hard cap 100), 3-4 sentences, one idea.
+- email_subject: 1-5 words, ALL LOWERCASE. Examples:
+    "vossas margens em sumos"
+    "abertura no anjos"
+    "longevidade no bar"
+    "vossos hóspedes e wellness"
+- Opening line = a specific observation about THEM (recent press,
+  new opening, menu change, hire). Never "espero que esteja bem"
+  or "venho por este meio". Open with the observation.
+- Problem + credibility with a NUMBER ("a maior parte das casas
+  com quem trabalhamos perde 25% do produto fresco"; "subimos a
+  margem 18% para [casa comparável]").
+- Interest CTA = a question. Examples:
+    "Faz sentido eu mandar a tabela?"
+    "Querem ver uma amostra?"
+    "Vale a pena uma conversa rápida?"
+  Never a calendar link.
+- Signature is plain: rep first name + role + url. P.S. allowed.
+- Mirror the rep's voice samples for vocabulary + rhythm. Don't be
+  over-formal — sound like a Portuguese hospitality pro talking to
+  a peer, not a corporate template.
+
+European Portuguese specifics:
+- "tu" form OK in casual contexts (peer-to-peer), "você" if more
+  formal venue (5-star hotel, fine dining). Default to "tu" unless
+  the prospect signals formality.
+- Avoid Brazilian markers ("você" everywhere, "gerúndio" gerund
+  forms like "estou fazendo"). Use European forms ("estou a fazer").
+- Spelling: "facto" not "fato", "óptimo" or "ótimo" both fine,
+  "telemóvel" not "celular".
+"""
+
+
+def generate_sequence(
+    profile: ProspectProfile,
+    rep_id: str,
+    *,
+    target_language: Optional[str] = None,
+) -> OutreachSequence:
+    """Generate the full outreach sequence for a prospect.
+
+    target_language: 'en' | 'pt' | None. When None, decided by rep's
+    language_strategy + prospect signals (see _detect_target_language).
+    """
     rep = get_rep_by_id(rep_id)
     if not rep:
         raise ValueError(f"Rep '{rep_id}' not found in reps.yaml")
 
     client = _get_client()
     rep_context = _build_rep_context(rep)
+
+    lang = (target_language or _detect_target_language(profile, rep)).lower()
+    language_directive = _PT_LANGUAGE_DIRECTIVE if lang == "pt" else ""
 
     prospect_context = f"""
 Prospect: {profile.name}
@@ -241,12 +337,14 @@ Description: {profile.description}
 Personalisation hook: {profile.personalisation_hook}
 Health/wellness angle: {profile.health_wellness_angle}
 Tier: {profile.tier} (Tier 1 = €1K/mo, Tier 2 = €500-1K/mo, Tier 3 = €100-500/mo)
+Target language: {lang.upper()}
 """
 
     user_content = f"""
 {rep_context}
 
 {prospect_context}
+{language_directive}
 
 Generate the full outreach sequence. Respond with JSON in this exact format:
 {{

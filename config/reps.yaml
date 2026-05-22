@@ -48,6 +48,7 @@ reps:
 - active: true
   email: vasco@mom-wow.com
   id: vasco
+  language_strategy: pt_first  # PT for PT-based prospects, EN otherwise
   linkedin_url: https://www.linkedin.com/in/vascodccosta/
   name: Vasco Costa
   phone: '+351 918 253 882'
@@ -67,7 +68,7 @@ reps:
     Oi irmã, queria só mesmo dar os parabéns, tanto a ti como ao André, sei que devem estar a ter um momento muito único e bom e mandar um abraço a todos, sei que agora é mais complicado que é pequenino mas depois quando der para conhecer o Xavier gostava muito.
   - |
     Perdido na corrente, que a nada me leva. Perdido na minha mente, há quanto tempo estou? Perdido como a chuva quando bate a seca, perdido como o vento quando quero um sopro. Ver se eu me encontro, longe lá das trevas, quero ver uma luz diferente nesse meu mundo. E eu não mudo, mas eu luto sempre, 'tou a bater continência até não ter mais fôlego.
-  title: Sales Executive, MOM
+  title: Hospitality Partnerships, MOM
   tone_notes: |
     Bilingual: business English at work, casual Portuguese in personal life.
     Hospitality-trained (ex-ODEON Cinemas Experience Manager) — comfortable
@@ -85,6 +86,7 @@ reps:
 - active: true
   email: perry@mom-wow.com
   id: perry_patraszewski
+  language_strategy: english  # always EN for cold outreach
   linkedin_url: https://www.linkedin.com/in/perry-patraszewski/
   name: Perry Patraszewski
   sample_messages:
