@@ -48,16 +48,40 @@ reps:
 - active: true
   email: vasco@mom-wow.com
   id: vasco
-  linkedin_url: ''
-  name: Vasco
-  # TODO Perry: paste 3-5 of Vasco's actual messages here (emails, WhatsApps,
-  # LinkedIn messages) so the writer can mirror his voice. Without samples,
-  # the writer falls back to a generic professional tone that won't sound
-  # like him. Aim for variety: one cold intro, one follow-up, one casual reply.
-  sample_messages: []
+  linkedin_url: https://www.linkedin.com/in/vascodccosta/
+  name: Vasco Costa
+  phone: '+351 918 253 882'
+  sample_messages:
+  - |
+    Dear Sidney,
+    I hope you are well.
+    It is with mixed emotions that I am writing to formally resign from my position as Cinema Experience Manager at ODEON Cinemas, with my final working day being April 30th, 2025.
+    This decision has not been easy, as my time at ODEON has been nothing short of fulfilling. Working alongside such a talented and dedicated team has been a rewarding experience, and I feel truly proud of the accomplishments we've achieved together. From managing exceptional cinema experiences to collaborating with colleagues who continually inspire me, I have gained invaluable skills and built lasting relationships that I will carry with me throughout my career.
+    I am extremely grateful for the trust and support you, along with the management team, have provided me during my time here.
+    Please know that I am committed to ensuring a smooth and seamless transition over the following months.
+    Thank you once again for the privilege of being part of the ODEON team. I will always look back on my time here with fondness and appreciation.
+    Kind regards,
+    Vasco Andre de Carvalho Simoes Costa
+    Cinema Experience Manager, ODEON Cinemas
+  - |
+    Oi irmã, queria só mesmo dar os parabéns, tanto a ti como ao André, sei que devem estar a ter um momento muito único e bom e mandar um abraço a todos, sei que agora é mais complicado que é pequenino mas depois quando der para conhecer o Xavier gostava muito.
+  - |
+    Perdido na corrente, que a nada me leva. Perdido na minha mente, há quanto tempo estou? Perdido como a chuva quando bate a seca, perdido como o vento quando quero um sopro. Ver se eu me encontro, longe lá das trevas, quero ver uma luz diferente nesse meu mundo. E eu não mudo, mas eu luto sempre, 'tou a bater continência até não ter mais fôlego.
   title: Sales Executive, MOM
-  tone_notes: 'TODO Perry: 1-2 sentences on how Vasco writes. e.g. "Direct and
-    confident, light on adjectives, Portuguese-first."'
+  tone_notes: |
+    Bilingual: business English at work, casual Portuguese in personal life.
+    Hospitality-trained (ex-ODEON Cinemas Experience Manager) — comfortable
+    with customer-experience language. Warm, sincere, relationship-led.
+    Leans into gratitude and rapport over hard pitch. Comfortable being
+    personal and a bit reflective when it fits the moment. In English:
+    polished business-formal with real warmth (lots of "thank you", "truly
+    grateful"). In Portuguese: direct and intimate, runs sentences together,
+    very few adverbs. Tendency toward earnestness over cleverness.
+    Sign-off: "Vasco Costa" for B2B, just "Vasco" with people he knows.
+    NOTE: these samples are mostly non-sales (resignation letter, family
+    message, a poem). For cold B2B email he should follow the standard
+    cold-email rules in BOTH languages — short, observation-first, one
+    question CTA. Tone here is for vocabulary + rhythm only.
 - active: true
   email: perry@mom-wow.com
   id: perry_patraszewski
