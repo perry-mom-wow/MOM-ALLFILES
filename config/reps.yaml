@@ -46,6 +46,19 @@ reps:
   tone_notes: Warm, wellness-focused, hospitality background. Friendly and approachable.
     Passionate about food and drink culture.
 - active: true
+  email: vasco@mom-wow.com
+  id: vasco
+  linkedin_url: ''
+  name: Vasco
+  # TODO Perry: paste 3-5 of Vasco's actual messages here (emails, WhatsApps,
+  # LinkedIn messages) so the writer can mirror his voice. Without samples,
+  # the writer falls back to a generic professional tone that won't sound
+  # like him. Aim for variety: one cold intro, one follow-up, one casual reply.
+  sample_messages: []
+  title: Sales Executive, MOM
+  tone_notes: 'TODO Perry: 1-2 sentences on how Vasco writes. e.g. "Direct and
+    confident, light on adjectives, Portuguese-first."'
+- active: true
   email: perry@mom-wow.com
   id: perry_patraszewski
   linkedin_url: https://www.linkedin.com/in/perry-patraszewski/
