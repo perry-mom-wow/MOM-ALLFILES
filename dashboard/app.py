@@ -428,12 +428,11 @@ def page_pipeline():
 
     st.divider()
 
-    # Funnel chart
+    # Funnel chart — render interactively (no PNG export, no Kaleido/Chrome needed)
     try:
-        from agents.reporter import generate_report, _make_funnel_chart, _deals_to_df
+        from agents.reporter import _build_funnel_fig, _deals_to_df
         deal_df = _deals_to_df(deals)
-        funnel_path = _make_funnel_chart(deal_df)
-        st.image(str(funnel_path), width="stretch")
+        st.plotly_chart(_build_funnel_fig(deal_df), use_container_width=True)
     except Exception as e:
         st.warning(f"Chart error: {e}")
 

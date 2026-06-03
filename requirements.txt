@@ -12,7 +12,7 @@ pandas>=2.1.0
 httpx>=0.26.0
 lxml>=4.9.0
 resend>=2.0.0
-kaleido>=0.2.1
+kaleido==0.2.1  # PINNED: v1.x requires Chrome (breaks Streamlit Cloud). 0.2.1 ships self-contained renderer.
 
 # ── EA system (Phase 1) ────────────────────────────────────────────────────────
 sqlalchemy>=2.0.0

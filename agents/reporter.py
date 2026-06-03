@@ -76,7 +76,8 @@ def _deals_to_df(deals: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _make_funnel_chart(df: pd.DataFrame) -> Path:
+def _build_funnel_fig(df: pd.DataFrame) -> go.Figure:
+    """Build the funnel chart as a Plotly Figure (no PNG export — safe for Streamlit Cloud)."""
     stage_counts = []
     for stage in STAGE_ORDER:
         count = len(df[df["stage"] == stage])
@@ -98,7 +99,12 @@ def _make_funnel_chart(df: pd.DataFrame) -> Path:
         plot_bgcolor=WHITE,
         paper_bgcolor=CREAM,
     )
-    return _save_chart(fig, "funnel")
+    return fig
+
+
+def _make_funnel_chart(df: pd.DataFrame) -> Path:
+    """Render the funnel chart to PNG for the emailed Friday report (needs Kaleido)."""
+    return _save_chart(_build_funnel_fig(df), "funnel")
 
 
 def _make_tier_bar(df: pd.DataFrame) -> Path:
