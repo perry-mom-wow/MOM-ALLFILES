@@ -1,92 +1,74 @@
 reps:
-- active: false
-  email: laura@mom-wow.com
-  id: laura
-  linkedin_url: ''
-  name: Laura
-  sample_messages:
-  - Hi. Remember I told you Adriana from welwell wnt to do an interview with you?
-    She want to know if she can pass by tomorrow, she want to go to MOM for the interview
-    and take pics of the store. Can you do it tomorrow morning?
-  - Hi Perry. I didn’t have time to do the proposal for the Van cause I’m still walking
-    around. Wonder if someone else can follow up that  and I do events and sales.
-    Is that ok? Thank you. I know you need that ASAP. Thank you.
-  - Hi Sophie,
-  - Great speaking earlier — really exciting to hear more about the Interstellar Summit.
-    It sounds like a fantastic event, and we’d love to be involved.
-  - Following our conversation, I’ve outlined a proposal for Mom-Wow to partner with
-    you across both days.
-  - We’d propose bringing a fully branded functional juice bar experience to the summit,
-    operating throughout May 6–7. As the exclusive juice partner on-site, we’d serve
-    approximately 200–250 bottles across the event, giving attendees access to performance-focused,
-    functional beverages aligned with the summit’s theme of workplace optimisation.
-  - We see strong value in integrating into the key networking moments — the Day 1
-    mixer and Day 2 after party — where we can create a high-impact brand presence
-    while also driving sampling and engagement. I would be there to introduce the
-    products, explain the benefits, and connect with attendees directly.
-  - In terms of setup, we’re flexible depending on the venue logistics. We can either
-    create a clean indoor activation (branded table/booth), or, if outdoor access
-    allows, bring a VW T1 van for a more distinctive and memorable experience.
-  - From a commercial standpoint, a full sponsorship isn’t feasible for us at this
-    stage, so we’d be looking at a commercial partnership model. This would involve
-    supplying product at a partner rate, with Mom-Wow handling the activation, presence,
-    and overall experience. We’re also open to exploring a co-sponsorship with a complementary
-    partner if that helps expand the activation.
-  - At the moment, final pricing is still dependent on co-packer costs, which we expect
-    to confirm within the next 2–3 weeks. We’re also on track to have our first HPP
-    batch ready by the event, extending shelf life and simplifying logistics.
-  - Overall, we think this is a great fit — particularly given the international audience
-    and strong UK presence, where there’s already familiarity with functional mushroom
-    products.
-  - Let me know your thoughts, and happy to jump on a call to refine details or align
-    on next steps.
-  - Best,
-  - Laura Marin.
-  title: Sales Executive, MOM
-  tone_notes: Warm, wellness-focused, hospitality background. Friendly and approachable.
-    Passionate about food and drink culture.
 - active: true
   email: vasco@mom-wow.com
   id: vasco
-  language_strategy: pt_first  # PT for PT-based prospects, EN otherwise
+  language_strategy: pt_first
   linkedin_url: https://www.linkedin.com/in/vascodccosta/
   name: Vasco Costa
-  phone: '+351 918 253 882'
+  phone: +351 918 253 882
   sample_messages:
-  - |
-    Dear Sidney,
-    I hope you are well.
-    It is with mixed emotions that I am writing to formally resign from my position as Cinema Experience Manager at ODEON Cinemas, with my final working day being April 30th, 2025.
-    This decision has not been easy, as my time at ODEON has been nothing short of fulfilling. Working alongside such a talented and dedicated team has been a rewarding experience, and I feel truly proud of the accomplishments we've achieved together. From managing exceptional cinema experiences to collaborating with colleagues who continually inspire me, I have gained invaluable skills and built lasting relationships that I will carry with me throughout my career.
-    I am extremely grateful for the trust and support you, along with the management team, have provided me during my time here.
-    Please know that I am committed to ensuring a smooth and seamless transition over the following months.
-    Thank you once again for the privilege of being part of the ODEON team. I will always look back on my time here with fondness and appreciation.
-    Kind regards,
-    Vasco Andre de Carvalho Simoes Costa
-    Cinema Experience Manager, ODEON Cinemas
-  - |
-    Oi irmã, queria só mesmo dar os parabéns, tanto a ti como ao André, sei que devem estar a ter um momento muito único e bom e mandar um abraço a todos, sei que agora é mais complicado que é pequenino mas depois quando der para conhecer o Xavier gostava muito.
-  - |
-    Perdido na corrente, que a nada me leva. Perdido na minha mente, há quanto tempo estou? Perdido como a chuva quando bate a seca, perdido como o vento quando quero um sopro. Ver se eu me encontro, longe lá das trevas, quero ver uma luz diferente nesse meu mundo. E eu não mudo, mas eu luto sempre, 'tou a bater continência até não ter mais fôlego.
+  - Dear Sidney,
+  - I hope you are well.
+  - It is with mixed emotions that I am writing to formally resign from my position
+    as Cinema Experience Manager at ODEON Cinemas, with my final working day being
+    April 30th, 2025.
+  - This decision has not been easy, as my time at ODEON has been nothing short of
+    fulfilling. Working alongside such a talented and dedicated team has been a rewarding
+    experience, and I feel truly proud of the accomplishments we've achieved together.
+    From managing exceptional cinema experiences to collaborating with colleagues
+    who continually inspire me, I have gained invaluable skills and built lasting
+    relationships that I will carry with me throughout my career.
+  - I am extremely grateful for the trust and support you, along with the management
+    team, have provided me during my time here.
+  - Please know that I am committed to ensuring a smooth and seamless transition over
+    the following months.
+  - Thank you once again for the privilege of being part of the ODEON team. I will
+    always look back on my time here with fondness and appreciation.
+  - Kind regards,
+  - Vasco Andre de Carvalho Simoes Costa
+  - Cinema Experience Manager, ODEON Cinemas
+  - Oi irmã, queria só mesmo dar os parabéns, tanto a ti como ao André, sei que devem
+    estar a ter um momento muito único e bom e mandar um abraço a todos, sei que agora
+    é mais complicado que é pequenino mas depois quando der para conhecer o Xavier
+    gostava muito.
+  - Perdido na corrente, que a nada me leva. Perdido na minha mente, há quanto tempo
+    estou? Perdido como a chuva quando bate a seca, perdido como o vento quando quero
+    um sopro. Ver se eu me encontro, longe lá das trevas, quero ver uma luz diferente
+    nesse meu mundo. E eu não mudo, mas eu luto sempre, 'tou a bater continência até
+    não ter mais fôlego.
   title: Hospitality Partnerships, MOM
-  tone_notes: |
-    Bilingual: business English at work, casual Portuguese in personal life.
+  tone_notes: 'Bilingual: business English at work, casual Portuguese in personal
+    life.
+
     Hospitality-trained (ex-ODEON Cinemas Experience Manager) — comfortable
+
     with customer-experience language. Warm, sincere, relationship-led.
+
     Leans into gratitude and rapport over hard pitch. Comfortable being
+
     personal and a bit reflective when it fits the moment. In English:
+
     polished business-formal with real warmth (lots of "thank you", "truly
+
     grateful"). In Portuguese: direct and intimate, runs sentences together,
+
     very few adverbs. Tendency toward earnestness over cleverness.
+
     Sign-off: "Vasco Costa" for B2B, just "Vasco" with people he knows.
+
     NOTE: these samples are mostly non-sales (resignation letter, family
+
     message, a poem). For cold B2B email he should follow the standard
+
     cold-email rules in BOTH languages — short, observation-first, one
+
     question CTA. Tone here is for vocabulary + rhythm only.
+
+    '
 - active: true
   email: perry@mom-wow.com
   id: perry_patraszewski
-  language_strategy: english  # always EN for cold outreach
+  language_strategy: english
   linkedin_url: https://www.linkedin.com/in/perry-patraszewski/
   name: Perry Patraszewski
   sample_messages:
