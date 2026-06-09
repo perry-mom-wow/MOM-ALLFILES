@@ -28,11 +28,15 @@ def _render_hubspot_error(exc: Exception) -> None:
             "is missing or invalid in this environment."
         )
         st.markdown(
-            "**Fix on Streamlit Cloud:** open the app → ⋮ menu → **Settings** → "
-            "**Secrets** → paste:\n\n"
-            "```toml\nHUBSPOT_API_KEY = \"pat-eu1-xxxx...\"\n```\n\n"
-            "Save, then the app re-runs and HubSpot data appears here. The token "
-            "comes from HubSpot → Settings → Integrations → Private apps."
+            "**Fix:** add the `HUBSPOT_API_KEY` environment variable on your "
+            "deployment platform.\n\n"
+            "- **Railway:** project → service → **Variables** tab → `+ New Variable` "
+            "→ `HUBSPOT_API_KEY=pat-eu1-...` → Save.\n"
+            "- **Streamlit Cloud:** app → ⋮ → **Settings** → **Secrets** → paste "
+            "`HUBSPOT_API_KEY = \"pat-eu1-...\"`.\n"
+            "- **Local:** add to `.env` next to other keys.\n\n"
+            "Get the token from HubSpot → Settings → Integrations → Private apps. "
+            "The app re-runs automatically once the var is set."
         )
     elif is_403:
         st.error(
