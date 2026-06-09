@@ -1,5 +1,18 @@
 reps:
 - active: true
+  email: irina@mom-wow.com
+  id: irina
+  language_strategy: pt_first  # PT-based, defaults to PT for PT prospects
+  linkedin_url: https://www.linkedin.com/in/irina-brito/
+  name: Irina Saturnino
+  # TODO Perry: paste 3-5 of Irina's actual messages here for voice mirroring.
+  # Until then, the writer falls back to a generic professional tone.
+  sample_messages: []
+  title: Sales Manager, MOM
+  tone_notes: 'TODO Perry: 1-2 sentences on how Irina writes (formality,
+    languages used, tics, sign-off style). Without this the writer uses a
+    neutral business-formal default that will not sound like her.'
+- active: true
   email: vasco@mom-wow.com
   id: vasco
   language_strategy: pt_first
