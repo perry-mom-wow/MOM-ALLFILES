@@ -4,7 +4,7 @@ reps:
   id: irina
   language_strategy: pt_first  # PT-based, defaults to PT for PT prospects
   linkedin_url: https://www.linkedin.com/in/irina-brito/
-  name: Irina Saturnino
+  name: Irina Brito
   # TODO Perry: paste 3-5 of Irina's actual messages here for voice mirroring.
   # Until then, the writer falls back to a generic professional tone.
   sample_messages: []

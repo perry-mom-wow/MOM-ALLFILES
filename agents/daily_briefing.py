@@ -22,9 +22,14 @@ ICP = load_icp()
 
 # ── Default daily discovery plan ────────────────────────────────────────────────
 # Each weekday morning, agent runs these discovery jobs.
-# Two reps now (Vasco joined 2026-05-22). Perry keeps the higher-touch tiers
-# (Michelin restaurants + 5-star hotels). Vasco takes everything else.
-# Tune these per current sales priorities.
+# Three reps as of 2026-05-22:
+#   Irina (Sales Manager) — owns Tier 1 NAMED ACCOUNTS (5-star hotel groups,
+#     Michelin restaurants, hotel chains). No auto-discovery; she works specific
+#     branded accounts that come in via manual add, referrals, or escalation.
+#   Perry — Tier 2 mid-tier discovery: boutique hotels + restaurants in Lisboa.
+#   Vasco — Tier 3 volume discovery: beach clubs, wellness, spas, cafés, bars.
+# Tier 1 prospects discovered by either Perry or Vasco should be re-assigned to
+# Irina in HubSpot (rename tag from [perry_patraszewski] or [vasco] → [irina]).
 DAILY_PLAN = {
     "perry_patraszewski": [
         {"location": "Lisboa", "types": ["restaurant"], "max_per": 3},
@@ -35,6 +40,9 @@ DAILY_PLAN = {
         {"location": "Lisboa", "types": ["wellness_center", "spa"], "max_per": 3},
         {"location": "Lisboa", "types": ["cafe", "bar"], "max_per": 2},
     ],
+    # Irina: no DAILY_PLAN. Sales Manager handles named Tier 1 accounts
+    # (Pestana, Vila Galé, Four Seasons, Aman, Memmo, Pousadas, Michelin-listed
+    # restaurants, etc.) added manually or escalated up from Perry/Vasco.
 }
 
 
