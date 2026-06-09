@@ -1,0 +1,14 @@
+# Railway deploy config for the MOM Sales Agent.
+# Railway auto-detects Python via Nixpacks (reads requirements.txt + runtime.txt).
+# We override the start command so Streamlit binds to Railway's dynamic $PORT
+# and listens on 0.0.0.0 instead of the default localhost.
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "streamlit run streamlit_app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false --browser.gatherUsageStats false"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+healthcheckPath = "/_stcore/health"
+healthcheckTimeout = 30
