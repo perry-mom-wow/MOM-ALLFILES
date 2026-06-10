@@ -260,7 +260,7 @@ def sidebar():
 
     page = st.sidebar.radio(
         "Navigate",
-        ["Pipeline", "Daily Queue", "Inbound", "Run Agent", "Team", "Reports"],
+        ["Daily Queue", "Pipeline", "Inbound", "Run Agent", "Team", "Reports"],
         label_visibility="collapsed",
     )
 
