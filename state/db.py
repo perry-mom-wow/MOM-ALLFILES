@@ -21,6 +21,15 @@ _LOCAL_SQLITE.parent.mkdir(parents=True, exist_ok=True)
 
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_LOCAL_SQLITE}")
 
+# Railway / Supabase inject DATABASE_URL as `postgresql://...` which SQLAlchemy
+# maps to psycopg2 by default. We bundle psycopg v3 instead (smaller, no
+# system libpq build). Rewrite the dialect so SQLAlchemy picks the right driver.
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgresql://"):]
+elif DATABASE_URL.startswith("postgres://"):
+    # Heroku-style legacy URL
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgres://"):]
+
 _engine_kwargs: dict = {"future": True}
 if DATABASE_URL.startswith("sqlite"):
     _engine_kwargs["connect_args"] = {"check_same_thread": False}
