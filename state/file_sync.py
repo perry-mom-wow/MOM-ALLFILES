@@ -178,14 +178,20 @@ def hydrate_local_files() -> dict:
     if not _db_available():
         return {"queues": 0, "sent": 0, "sequences": 0, "skipped": True}
 
-    from state.db import init_db
+    from state.db import init_db, engine, DATABASE_URL
     from state.models import QueueFile, SentFile, SequenceFile
 
     _ensure_dirs()
     counts = {"queues": 0, "sent": 0, "sequences": 0}
+    print(f"[hydrate] DB host={engine.url.host} db={engine.url.database}", flush=True)
     try:
         init_db()  # idempotent CREATE TABLE
         with _session() as s:
+            # Diagnostic counts — what's in the DB
+            from sqlalchemy import text
+            n_q = s.execute(text("SELECT COUNT(*) FROM queue_files")).scalar()
+            n_s = s.execute(text("SELECT COUNT(*) FROM sequence_files")).scalar()
+            print(f"[hydrate] DB rows: queue_files={n_q}, sequence_files={n_s}", flush=True)
             for q in s.query(QueueFile).all():
                 path = QUEUES_DIR / f"{q.rep_id}_{q.day.isoformat()}.json"
                 # Only overwrite if file missing OR DB row is newer.
