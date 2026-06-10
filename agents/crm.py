@@ -30,6 +30,11 @@ def _save_sequence(deal_id: str, profile, sequence, rep_id: str) -> None:
     }
     with open(SEQUENCE_DIR / f"{deal_id}.json", "w") as f:
         json.dump(data, f, indent=2)
+    try:
+        from state.file_sync import mirror_sequence_file
+        mirror_sequence_file(deal_id, data)
+    except Exception:
+        pass
 
 
 def _load_sequence(deal_id: str) -> Optional[dict]:
@@ -288,6 +293,15 @@ def _cancel_queued_messages(deal_id: str) -> None:
         if len(filtered) < len(items):
             with open(queue_file, "w") as f:
                 json.dump(filtered, f, indent=2, default=str)
+            # Mirror to Postgres
+            try:
+                from state.file_sync import _parse_queue_filename, mirror_queue_file
+                parsed = _parse_queue_filename(queue_file.name)
+                if parsed:
+                    rep_id, day = parsed
+                    mirror_queue_file(rep_id, day, filtered)
+            except Exception:
+                pass
 
 
 def mark_tasting_booked(deal_id: str, contact_id: str, tasting_date: date) -> None:

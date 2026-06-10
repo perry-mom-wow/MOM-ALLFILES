@@ -20,6 +20,31 @@ def _sent_path(rep_id: str, day: date) -> Path:
     return SENT_DIR / f"{rep_id}_{day.isoformat()}.json"
 
 
+def _mirror_queue(rep_id: str, day: date, items: list) -> None:
+    """Mirror queue file to Postgres if DATABASE_URL is set. No-op otherwise."""
+    try:
+        from state.file_sync import mirror_queue_file
+        mirror_queue_file(rep_id, day, items)
+    except Exception:
+        pass
+
+
+def _mirror_sent(rep_id: str, day: date, items: list) -> None:
+    try:
+        from state.file_sync import mirror_sent_file
+        mirror_sent_file(rep_id, day, items)
+    except Exception:
+        pass
+
+
+def _mirror_sequence(deal_id: str, payload: dict) -> None:
+    try:
+        from state.file_sync import mirror_sequence_file
+        mirror_sequence_file(deal_id, payload)
+    except Exception:
+        pass
+
+
 def add_to_queue(rep_id: str, item: dict, day: Optional[date] = None) -> None:
     """Add a message item to a rep's daily queue."""
     day = day or date.today()
@@ -28,6 +53,7 @@ def add_to_queue(rep_id: str, item: dict, day: Optional[date] = None) -> None:
     items.append(item)
     with open(path, "w") as f:
         json.dump(items, f, indent=2, default=str)
+    _mirror_queue(rep_id, day, items)
 
 
 def load_queue(rep_id: str, day: Optional[date] = None) -> list[dict]:
@@ -49,8 +75,10 @@ def remove_from_queue(rep_id: str, index: int, day: Optional[date] = None) -> No
     if items:
         with open(path, "w") as f:
             json.dump(items, f, indent=2, default=str)
+        _mirror_queue(rep_id, day, items)
     elif path.exists():
         path.unlink()
+        _mirror_queue(rep_id, day, [])  # represent empty in DB
 
 
 def load_pending(rep_id: str, days_back: int = 14) -> list[dict]:
@@ -85,6 +113,7 @@ def log_sent(rep_id: str, item: dict, day: Optional[date] = None) -> None:
     log.append({k: v for k, v in item.items() if k != "_source_date"})
     with open(path, "w") as f:
         json.dump(log, f, indent=2, default=str)
+    _mirror_sent(rep_id, day, log)
 
 
 def load_sent(rep_id: str, day: Optional[date] = None) -> list[dict]:
@@ -112,8 +141,10 @@ def remove_pending_item(rep_id: str, item: dict) -> None:
     if new_items:
         with open(path, "w") as f:
             json.dump(new_items, f, indent=2, default=str)
+        _mirror_queue(rep_id, src_date, new_items)
     elif path.exists():
         path.unlink()
+        _mirror_queue(rep_id, src_date, [])
 
 
 def clear_queue(rep_id: str, day: Optional[date] = None) -> None:
@@ -121,6 +152,7 @@ def clear_queue(rep_id: str, day: Optional[date] = None) -> None:
     path = _queue_path(rep_id, day)
     if path.exists():
         path.unlink()
+        _mirror_queue(rep_id, day, [])
 
 
 CONTACT_FIELDS: tuple[str, ...] = (
@@ -228,6 +260,13 @@ def update_contact_info(
             with open(path, "w") as f:
                 json.dump(items, f, indent=2, default=str)
             updated += 1
+            # Mirror to Postgres
+            parsed = path.stem.rsplit("_", 1)
+            if len(parsed) == 2:
+                try:
+                    _mirror_queue(parsed[0], date.fromisoformat(parsed[1]), items)
+                except Exception:
+                    pass
 
     # Mirror into the canonical sequence file so newly-generated follow-ups inherit.
     seq_path = Path(__file__).parent.parent / "data" / "sequences" / f"{deal_id}.json"
@@ -252,6 +291,7 @@ def update_contact_info(
                 with open(seq_path, "w") as f:
                     json.dump(seq, f, indent=2, default=str)
                 updated += 1
+                _mirror_sequence(deal_id, seq)
         except Exception:
             pass
 

@@ -144,6 +144,12 @@ def _write(deal_id: str, payload: dict) -> None:
     p = _seq_path(deal_id)
     with open(p, "w") as f:
         json.dump(payload, f, indent=2, default=str)
+    # Mirror into Postgres so the next container start can hydrate this file.
+    try:
+        from state.file_sync import mirror_sequence_file
+        mirror_sequence_file(deal_id, payload)
+    except Exception:
+        pass
 
 
 def _conv_block(seq: dict) -> dict:

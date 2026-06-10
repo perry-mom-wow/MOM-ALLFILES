@@ -29,6 +29,43 @@ def _utcnow() -> datetime:
     return datetime.utcnow()
 
 
+# ── File-backed state stored as JSON blobs ────────────────────────────────────
+# Railway / Streamlit Cloud / any platform with an ephemeral filesystem wipes
+# our queue/, data/sequences/, sent/ folders on every restart. To survive that,
+# we mirror every JSON-file write into Postgres. On container start we hydrate
+# the local files back from these tables (see state.file_sync).
+
+class QueueFile(Base):
+    """Mirror of queues/{rep_id}_{day}.json.
+    Stored verbatim as a JSON list of queue items, keyed by (rep_id, day)."""
+    __tablename__ = "queue_files"
+    rep_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    items: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class SentFile(Base):
+    """Mirror of sent/{rep_id}_{day}.json."""
+    __tablename__ = "sent_files"
+    rep_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    items: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class SequenceFile(Base):
+    """Mirror of data/sequences/{deal_id}.json.
+    The whole sequence payload (prospect info, messages dict, conversation
+    block) is stored as JSON, keyed by deal_id."""
+    __tablename__ = "sequence_files"
+    deal_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    rep_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    prospect_name: Mapped[Optional[str]] = mapped_column(String(500))
+    payload: Mapped[dict] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
 # ── Gmail threads ──────────────────────────────────────────────────────────────
 
 class Thread(Base):

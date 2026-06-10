@@ -276,3 +276,8 @@ def _save_inbound_sequence_stub(
     }
     with open(seq_path, "w") as f:
         json.dump(payload, f, indent=2, default=str)
+    try:
+        from state.file_sync import mirror_sequence_file
+        mirror_sequence_file(deal_id, payload)
+    except Exception:
+        pass
