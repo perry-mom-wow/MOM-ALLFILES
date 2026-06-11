@@ -644,8 +644,11 @@ def page_queue():
         st.success("Cold queue is empty — all caught up on outreach!")
         return
 
+    fresh = total - carryover
     if carryover:
-        st.info(f"{carryover} message(s) carried over from previous days.")
+        st.info(f"📬 {total} messages ready to send: {fresh} new today + {carryover} carried over from previous days.")
+    else:
+        st.info(f"📬 {total} messages ready to send today.")
 
     # Track position in queue; reset if queue shrank (item was removed)
     if "queue_index" not in st.session_state or st.session_state.queue_index >= total:
@@ -1136,11 +1139,23 @@ def page_queue():
                 )
 
     st.divider()
-    if st.button("Clear today's queue file", type="secondary",
-                 help="Only deletes today's queue file. Carryover items from previous days stay."):
-        clear_queue(rep_id)
-        st.session_state.queue_index = 0
-        st.rerun()
+    # Destructive — hidden behind an expander + explicit confirmation so a
+    # stray click can't wipe a day's work (this happened on 2026-06-11).
+    with st.expander("🗑 Danger zone"):
+        st.warning(
+            "This permanently deletes ALL of today's queued messages for this "
+            "rep (carryover from previous days stays). It cannot be undone "
+            "from the app."
+        )
+        confirm_clear = st.checkbox(
+            "I understand — delete today's queue",
+            key=f"confirm_clear_{rep_id}",
+        )
+        if st.button("Clear today's queue file", type="secondary",
+                     disabled=not confirm_clear):
+            clear_queue(rep_id)
+            st.session_state.queue_index = 0
+            st.rerun()
 
 
 # ── Run Agent page ─────────────────────────────────────────────────────────────
