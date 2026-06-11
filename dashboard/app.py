@@ -258,19 +258,47 @@ def sidebar():
         unsafe_allow_html=True,
     )
 
+    # Page + rep are persisted in the URL query string (?page=...&rep=...) so
+    # a browser refresh, a dropped websocket, or a shared link restores the
+    # exact same view. Plain session_state resets on every refresh — that's
+    # how Irina kept losing her active-rep selection (2026-06-11).
+    pages = ["Daily Queue", "Pipeline", "Inbound", "Run Agent", "Team", "Reports"]
+    try:
+        qp_page = st.query_params.get("page")
+    except Exception:
+        qp_page = None
+    page_index = pages.index(qp_page) if qp_page in pages else 0
     page = st.sidebar.radio(
         "Navigate",
-        ["Daily Queue", "Pipeline", "Inbound", "Run Agent", "Team", "Reports"],
+        pages,
+        index=page_index,
         label_visibility="collapsed",
     )
 
     st.sidebar.divider()
     reps = load_reps()
     rep_options = {r["name"]: r["id"] for r in reps}
-    active_rep_name = st.sidebar.selectbox("👤 Active Rep", list(rep_options.keys()))
+    rep_names = list(rep_options.keys())
+    id_to_name = {v: k for k, v in rep_options.items()}
+    try:
+        qp_rep = st.query_params.get("rep")
+    except Exception:
+        qp_rep = None
+    default_rep_name = id_to_name.get(qp_rep)
+    rep_index = rep_names.index(default_rep_name) if default_rep_name in rep_names else 0
+    active_rep_name = st.sidebar.selectbox("👤 Active Rep", rep_names, index=rep_index)
     active_rep_id = rep_options[active_rep_name]
     st.session_state["active_rep_id"] = active_rep_id
     st.session_state["active_rep_name"] = active_rep_name
+
+    # Write the selection back to the URL (no-op when unchanged).
+    try:
+        if st.query_params.get("rep") != active_rep_id:
+            st.query_params["rep"] = active_rep_id
+        if st.query_params.get("page") != page:
+            st.query_params["page"] = page
+    except Exception:
+        pass
 
     return page
 
@@ -626,7 +654,7 @@ def _render_conversation_nudges(rep_id: str) -> None:
 # ── Daily Queue page ───────────────────────────────────────────────────────────
 
 def page_queue():
-    rep_id = st.session_state.get("active_rep_id", "marcus")
+    rep_id = st.session_state.get("active_rep_id", "irina")
     rep_name = st.session_state.get("active_rep_name", "Rep")
 
     items = load_pending(rep_id)
@@ -1162,7 +1190,7 @@ def page_queue():
 
 def page_run_agent():
     st.title("🤖 Run Sales Agent")
-    rep_id = st.session_state.get("active_rep_id", "marcus")
+    rep_id = st.session_state.get("active_rep_id", "irina")
     rep_name = st.session_state.get("active_rep_name", "Rep")
     st.info(f"Messages will be prepared for **{rep_name}**. Switch rep in the sidebar.")
 
